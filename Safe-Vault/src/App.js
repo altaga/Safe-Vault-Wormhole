@@ -4,9 +4,6 @@ import React from 'react';
 import { StatusBar } from 'react-native';
 import DepositWallet from './screens/depositWallet/depositWallet';
 //import Lock from './screens/lock/lock';
-import {
-  Web3Modal
-} from '@web3modal/ethers5-react-native';
 import Main from './screens/main/main';
 import PaymentWallet from './screens/paymentWallet/paymentWallet';
 import SendWallet from './screens/sendWallet/sendWallet';
@@ -23,7 +20,6 @@ export default function App() {
     <ContextProvider>
       <NavigationContainer>
         <AppStateListener />
-        <Web3Modal />
         <StatusBar barStyle="light-content" />
         <TransactionsModal />
         <Stack.Navigator

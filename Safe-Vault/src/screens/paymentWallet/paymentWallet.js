@@ -1,6 +1,6 @@
-import {RN_GET_ADDRESS, RN_CARD_TRANSACTION} from '@env';
-import {ethers} from 'ethers';
-import React, {Component, Fragment} from 'react';
+import { RN_CARD_TRANSACTION, RN_GET_ADDRESS } from '@env';
+import { ethers } from 'ethers';
+import React, { Component, Fragment } from 'react';
 import {
   Dimensions,
   Image,
@@ -17,11 +17,10 @@ import QRCode from 'react-native-qrcode-svg';
 import Crypto from 'react-native-quick-crypto';
 import VirtualKeyboard from 'react-native-virtual-keyboard';
 import checkMark from '../../assets/checkMark.png';
-import {logo} from '../../assets/logo';
+import { logo } from '../../assets/logo';
 import Renders from '../../assets/logoHeader.png';
 import Title from '../../assets/title.png';
-import {abiBatchTokenBalances} from '../../contracts/batchTokenBalances';
-import {abiMOAAContract} from '../../contracts/moaaContract';
+import { abiBatchTokenBalances } from '../../contracts/batchTokenBalances';
 import GlobalStyles, {
   footer,
   header,

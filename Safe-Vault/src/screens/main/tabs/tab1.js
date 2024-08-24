@@ -200,20 +200,6 @@ class Tab1 extends Component {
               </Pressable>
               <Text style={GlobalStyles.singleButtonText}>Receive</Text>
             </View>
-            {/**
-                <View style={{justifyContent: 'center', alignItems: 'center'}}>
-                <Pressable
-                  onPress={() => this.props.navigation.navigate('SwapWallet')}
-                  style={GlobalStyles.singleButton}>
-                  <IconIonicons
-                    name="swap-vertical"
-                    size={iconSize}
-                    color={'white'}
-                  />
-                </Pressable>
-                <Text style={GlobalStyles.singleButtonText}>Swap</Text>
-              </View>
-              */}
             {this.state.nfcSupported && (
               <View style={{justifyContent: 'center', alignItems: 'center'}}>
                 <Pressable

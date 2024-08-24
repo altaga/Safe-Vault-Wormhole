@@ -1,6 +1,6 @@
-import Safe, {SafeFactory} from '@safe-global/protocol-kit';
-import {ethers} from 'ethers';
-import React, {Component, Fragment} from 'react';
+import Safe, { SafeFactory } from '@safe-global/protocol-kit';
+import { ethers } from 'ethers';
+import React, { Component, Fragment } from 'react';
 import {
   Dimensions,
   Image,
@@ -12,9 +12,9 @@ import {
   View,
 } from 'react-native';
 import checkMark from '../assets/checkMark.png';
-import {abiERC20} from '../contracts/erc20';
-import GlobalStyles, {mainColor, secondaryColor} from '../styles/styles';
-import {blockchain, CloudAccountController} from './constants';
+import { abiERC20 } from '../contracts/erc20';
+import GlobalStyles, { mainColor, secondaryColor } from '../styles/styles';
+import { blockchain, CloudAccountController } from './constants';
 import ContextModule from './contextModule';
 import {
   balancedSaving,
@@ -24,7 +24,6 @@ import {
   percentageSaving,
   setAsyncStorageValue,
 } from './utils';
-import {walletHOC} from './walletHOC';
 
 const baseTransactionsModalState = {
   stage: 0, // 0
@@ -839,4 +838,4 @@ class TransactionsModal extends Component {
   }
 }
 
-export default walletHOC(TransactionsModal);
+export default TransactionsModal;
