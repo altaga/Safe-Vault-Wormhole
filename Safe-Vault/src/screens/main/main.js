@@ -14,7 +14,7 @@ import GlobalStyles, {
 import ContextModule from '../../utils/contextModule';
 import Tab1 from './tabs/tab1';
 import Tab2 from './tabs/tab2';
-import Tab3 from './tabs/tab3';
+//import Tab3 from './tabs/tab3';
 
 // Tabs
 
@@ -80,7 +80,9 @@ class Main extends Component {
         <View style={[GlobalStyles.mainSend, {height: this.state.mainHeight}]}>
           {this.state.tab === 0 && <Tab1 navigation={this.props.navigation} />}
           {this.state.tab === 1 && <Tab2 navigation={this.props.navigation} />}
-          {this.state.tab === 2 && <Tab3 navigation={this.props.navigation} />}
+          {
+            //this.state.tab === 2 && <Tab3 navigation={this.props.navigation} />
+          }
         </View>
         <View style={[GlobalStyles.footerMain]}>
           <Pressable

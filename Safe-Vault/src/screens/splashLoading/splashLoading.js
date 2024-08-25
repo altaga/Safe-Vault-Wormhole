@@ -50,7 +50,7 @@ class SplashLoading extends Component {
         balancesSavings: balancesSavings ?? this.context.value.balancesSavings,
         activeTokensSavings:
           activeTokensSavings ?? this.context.value.activeTokensSavings,
-        savingsActive: savingsActive !== null ? true : false,
+        savingsActive: savingsActive !== null ? savingsActive : false,
         periodSelected: periodSelected ?? this.context.value.periodSelected,
         protocolSelected:
           protocolSelected ?? this.context.value.protocolSelected,

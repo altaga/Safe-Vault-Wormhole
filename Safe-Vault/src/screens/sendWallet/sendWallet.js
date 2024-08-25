@@ -1,4 +1,4 @@
-import React, {Component} from 'react';
+import React, { Component } from 'react';
 import {
   Dimensions,
   Image,
@@ -15,8 +15,8 @@ import RNPickerSelect from 'react-native-picker-select';
 import IconIonIcons from 'react-native-vector-icons/Ionicons';
 import Renders from '../../assets/logo.png';
 import Title from '../../assets/title.png';
-import GlobalStyles, {header, mainColor} from '../../styles/styles';
-import {blockchain} from '../../utils/constants';
+import GlobalStyles, { header, mainColor } from '../../styles/styles';
+import { blockchains } from '../../utils/constants';
 import ContextModule from '../../utils/contextModule';
 import Cam from './components/cam';
 import KeyboardAwareScrollViewComponent from './components/keyboardAvoid';
@@ -26,8 +26,19 @@ function setTokens(array) {
     return {
       ...item,
       value: index + 1,
-      label: item.name,
+      label: item.symbol,
       key: item.symbol,
+    };
+  });
+}
+
+function setChains(array) {
+  return array.map((item, index) => {
+    return {
+      ...item,
+      value: index + 1,
+      label: item.network,
+      key: item.network,
     };
   });
 }
@@ -35,9 +46,10 @@ function setTokens(array) {
 const SendWalletBaseState = {
   stage: 0,
   loading: false,
-  amount: '',
-  tokenSelected: setTokens(blockchain.tokens)[0], // 0
-  toAddress: '', // ""
+  amount: '0.000001',
+  fromChainSelector: setChains(blockchains)[3],
+  tokenSelected: setTokens(blockchains[0].tokens)[0], // 0
+  toAddress: '0xD59C797f8398a602B546227655179ab49A5973fF', // ""
 };
 
 class SendWallet extends Component {
@@ -155,6 +167,33 @@ class SendWallet extends Component {
                       <IconIonIcons name="qr-code" size={30} color={'white'} />
                     </Pressable>
                   </View>
+                  <Text style={GlobalStyles.formTitle}>Select Chain</Text>
+                  <RNPickerSelect
+                    style={{
+                      inputAndroidContainer: {
+                        textAlign: 'center',
+                      },
+                      inputAndroid: {
+                        textAlign: 'center',
+                        color: 'gray',
+                      },
+                      viewContainer: {
+                        ...GlobalStyles.input,
+                        width: Dimensions.get('screen').width * 0.9,
+                      },
+                    }}
+                    value={this.state.fromChainSelector.value}
+                    items={setChains(blockchains)}
+                    onValueChange={value => {
+                      value !== this.state.fromChainSelector.value &&
+                        this.setState({
+                          fromChainSelector: setChains(blockchains)[value - 1],
+                          tokenSelected: setTokens(
+                            blockchains[value - 1].tokens,
+                          )[this.state.tokenSelected.value - 1],
+                        });
+                    }}
+                  />
                   <Text style={GlobalStyles.formTitle}>Select Token</Text>
                   <RNPickerSelect
                     style={{
@@ -171,13 +210,19 @@ class SendWallet extends Component {
                       },
                     }}
                     value={this.state.tokenSelected.value}
-                    items={setTokens(blockchain.tokens).filter(
+                    items={setTokens(
+                      blockchains[this.state.fromChainSelector.value - 1].tokens,
+                    ).filter(
                       (_, index) => this.context.value.activeTokens[index],
                     )}
-                    onValueChange={token => {
-                      this.setState({
-                        tokenSelected: setTokens(blockchain.tokens)[token - 1],
-                      });
+                    onValueChange={value => {
+                      value !== this.state.tokenSelected.value &&
+                        this.setState({
+                          tokenSelected: setTokens(
+                            blockchains[this.state.fromChainSelector.value - 1]
+                              .tokens,
+                          )[value - 1],
+                        });
                     }}
                   />
                   <Text style={GlobalStyles.formTitle}>Amount</Text>
@@ -223,13 +268,15 @@ class SendWallet extends Component {
                       : {},
                   ]}
                   onPress={() => {
+                    console.log(this.state);
                     this.context.setValue({
                       isTransactionActive: true,
                       transactionData: {
                         walletSelector: 0,
+                        fromChainSelector: this.state.fromChainSelector.value - 1,
                         command:
                           this.state.tokenSelected.address ===
-                          blockchain.tokens[0].address
+                          blockchains[this.state.fromChainSelector.value - 1].tokens[0].address
                             ? 'transfer'
                             : 'transferToken',
                         label: `Transfer ${this.state.tokenSelected.symbol}`,

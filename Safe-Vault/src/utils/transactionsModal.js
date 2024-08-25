@@ -14,7 +14,7 @@ import {
 import checkMark from '../assets/checkMark.png';
 import { abiERC20 } from '../contracts/erc20';
 import GlobalStyles, { mainColor, secondaryColor } from '../styles/styles';
-import { blockchain, CloudAccountController } from './constants';
+import { blockchains, CloudAccountController } from './constants';
 import ContextModule from './contextModule';
 import {
   balancedSaving,
@@ -32,7 +32,7 @@ const baseTransactionsModalState = {
   transaction: {
     to: '',
     amount: '0.0',
-    tokenSymbol: blockchain.tokens[0].symbol,
+    tokenSymbol: blockchains[0].tokens[0].symbol,
     gas: '0.0',
     savedAmount: '0.0',
   },
@@ -41,7 +41,9 @@ const baseTransactionsModalState = {
 class TransactionsModal extends Component {
   constructor(props) {
     super(props);
-    this.provider = new ethers.providers.JsonRpcProvider(blockchain.rpc);
+    this.provider = blockchains.map(
+      x => new ethers.providers.JsonRpcProvider(x.rpc),
+    );
     this.state = baseTransactionsModalState;
     this.EventEmitter = new NativeEventEmitter();
   }
@@ -72,8 +74,11 @@ class TransactionsModal extends Component {
     } else if (this.context.value.transactionData.walletSelector === 1) {
       privateKey = await getEncryptedStorageValue('privateKeySavings');
     }
-    const signer = new ethers.Wallet(privateKey, this.provider);
-    const gasPrice = await this.provider.getGasPrice();
+    const signer = new ethers.Wallet(
+      privateKey,
+      this.provider[this.context.value.transactionData.fromChainSelector],
+    );
+    const gasPrice = await this.provider[this.context.value.transactionData.fromChainSelector].getGasPrice();
     let savedAmount = ethers.BigNumber.from(0);
     let gasSavings = ethers.BigNumber.from(0);
     if (this.context.value.transactionData.command === 'transfer') {
@@ -102,7 +107,7 @@ class TransactionsModal extends Component {
           ),
         };
         savedAmount = value * this.context.value.usdConversion[0];
-        gasSavings = await this.provider.estimateGas(transaction);
+        gasSavings = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
       }
       let transaction = null;
       if (this.context.value.transactionData.maxFlag) {
@@ -111,7 +116,7 @@ class TransactionsModal extends Component {
           to: this.context.value.transactionData.to,
           value: ethers.BigNumber.from(0),
         };
-        const gas = await this.provider.estimateGas(transaction);
+        const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
         const gasNeeded = gas.mul(gasPrice);
         transaction = {
           from: await signer.getAddress(),
@@ -136,7 +141,7 @@ class TransactionsModal extends Component {
           ),
         };
       }
-      const gas = await this.provider.estimateGas(transaction);
+      const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
       const gasDisplay = ethers.utils.formatEther(
         gasPrice.mul(gas.add(gasSavings)),
       );
@@ -145,16 +150,16 @@ class TransactionsModal extends Component {
           to: this.context.value.transactionData.to,
           amount: this.context.value.transactionData.amount,
           gas: gasDisplay,
-          tokenSymbol: blockchain.tokens[0].symbol,
+          tokenSymbol: blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].symbol,
           savedAmount,
         },
         loading: false,
       });
     } else if (this.context.value.transactionData.command === 'transferToken') {
       const tokenInfo =
-        blockchain.tokens[
+        blockchains[this.context.value.transactionData.fromChainSelector].tokens[
           findIndexByProperty(
-            blockchain.tokens,
+            blockchains[this.context.value.transactionData.fromChainSelector].tokens,
             'symbol',
             this.context.value.transactionData.tokenSymbol,
           )
@@ -162,7 +167,7 @@ class TransactionsModal extends Component {
       const tokenContract = new ethers.Contract(
         tokenInfo.address,
         abiERC20,
-        this.provider,
+        this.provider[this.context.value.transactionData.fromChainSelector],
       );
       const amount = ethers.utils.parseUnits(
         this.context.value.transactionData.amount,
@@ -184,7 +189,7 @@ class TransactionsModal extends Component {
           this.context.value.transactionData.amount *
           this.context.value.usdConversion[
             findIndexByProperty(
-              blockchain.tokens,
+              blockchains[this.context.value.transactionData.fromChainSelector].tokens,
               'symbol',
               this.context.value.transactionData.tokenSymbol,
             )
@@ -204,9 +209,9 @@ class TransactionsModal extends Component {
           ),
         };
         savedAmount = value * this.context.value.usdConversion[0];
-        gasSavings = await this.provider.estimateGas(transaction);
+        gasSavings = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
       }
-      const gas = await this.provider.estimateGas(transaction);
+      const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
       const gasDisplay = ethers.utils.formatEther(
         gasPrice.mul(gas.add(gasSavings)),
       );
@@ -227,20 +232,20 @@ class TransactionsModal extends Component {
       };
       const safe = await Safe.init({
         signer: privateKey,
-        provider: blockchain.rpc,
+        provider: blockchains[this.context.value.transactionData.fromChainSelector].rpc,
         predictedSafe: {
           safeAccountConfig,
         },
       });
       const transaction = await safe.createSafeDeploymentTransaction();
-      const gas = await this.provider.estimateGas(transaction);
+      const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
       const gasDisplay = ethers.utils.formatEther(gasPrice.mul(gas));
       await this.setStateAsync({
         transaction: {
           to: this.context.value.transactionData.to,
           amount: this.context.value.transactionData.amount,
           gas: gasDisplay,
-          tokenSymbol: blockchain.tokens[0].symbol,
+          tokenSymbol: blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].symbol,
         },
         loading: false,
       });
@@ -257,7 +262,7 @@ class TransactionsModal extends Component {
     } else if (this.context.value.transactionData.walletSelector === 1) {
       privateKey = await getEncryptedStorageValue('privateKeySavings');
     }
-    const signer = new ethers.Wallet(privateKey, this.provider);
+    const signer = new ethers.Wallet(privateKey, this.provider[this.context.value.transactionData.fromChainSelector]);
     if (this.context.value.transactionData.command === 'transfer') {
       if (
         this.context.value.savingsActive &&
@@ -286,13 +291,13 @@ class TransactionsModal extends Component {
       }
       let transaction = null;
       if (this.context.value.transactionData.maxFlag) {
-        const gasPrice = await this.provider.getGasPrice();
+        const gasPrice = await this.provider[this.context.value.transactionData.fromChainSelector].getGasPrice();
         transaction = {
           from: await signer.getAddress(),
           to: this.context.value.transactionData.to,
           value: ethers.BigNumber.from(0),
         };
-        const gas = await this.provider.estimateGas(transaction);
+        const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
         const gasNeeded = gas.mul(gasPrice);
         transaction = {
           from: await signer.getAddress(),
@@ -322,13 +327,13 @@ class TransactionsModal extends Component {
       await tx.wait();
       await this.setStateAsync({
         loading: false,
-        explorerURL: `${blockchain.blockExplorer}tx/${tx.hash}`,
+        explorerURL: `${blockchains[this.context.value.transactionData.fromChainSelector].blockExplorer}tx/${tx.hash}`,
       });
     } else if (this.context.value.transactionData.command === 'transferToken') {
       const tokenInfo =
-        blockchain.tokens[
+      blockchains[this.context.value.transactionData.fromChainSelector].tokens[
           findIndexByProperty(
-            blockchain.tokens,
+            blockchains[this.context.value.transactionData.fromChainSelector].tokens,
             'symbol',
             this.context.value.transactionData.tokenSymbol,
           )
@@ -336,7 +341,7 @@ class TransactionsModal extends Component {
       const tokenContract = new ethers.Contract(
         tokenInfo.address,
         abiERC20,
-        this.provider,
+        this.provider[this.context.value.transactionData.fromChainSelector],
       );
       const amount = ethers.utils.parseUnits(
         this.context.value.transactionData.amount,
@@ -358,7 +363,7 @@ class TransactionsModal extends Component {
           this.context.value.transactionData.amount *
           this.context.value.usdConversion[
             findIndexByProperty(
-              blockchain.tokens,
+              blockchains[this.context.value.transactionData.fromChainSelector].tokens,
               'symbol',
               this.context.value.transactionData.tokenSymbol,
             )
@@ -384,11 +389,11 @@ class TransactionsModal extends Component {
       await tx.wait();
       await this.setStateAsync({
         loading: false,
-        explorerURL: `${blockchain.blockExplorer}tx/${tx.hash}`,
+        explorerURL: `${blockchains[this.context.value.transactionData.fromChainSelector].blockExplorer}tx/${tx.hash}`,
       });
     } else if (this.context.value.transactionData.command === 'createAccount') {
       const safeFactory = await SafeFactory.init({
-        provider: blockchain.rpc,
+        provider: blockchains[this.context.value.transactionData.fromChainSelector].rpc,
         signer: privateKey,
       });
       const safeAccountConfig = {
@@ -411,7 +416,7 @@ class TransactionsModal extends Component {
           });
           await this.setStateAsync({
             loading: false,
-            explorerURL: `${blockchain.blockExplorer}tx/${txHash}`,
+            explorerURL: `${blockchains[this.context.value.transactionData.fromChainSelector].blockExplorer}tx/${txHash}`,
           });
         },
       });
@@ -532,7 +537,7 @@ class TransactionsModal extends Component {
                           this.state.transaction.amount *
                             this.context.value.usdConversion[
                               findIndexByProperty(
-                                blockchain.tokens,
+                                blockchains[this.context.value.transactionData.fromChainSelector].tokens,
                                 'symbol',
                                 this.state.transaction.tokenSymbol,
                               )
@@ -571,7 +576,7 @@ class TransactionsModal extends Component {
                     ) : (
                       <Fragment>
                         {epsilonRound(this.state.transaction.gas, 8)}{' '}
-                        {blockchain.token}
+                        {blockchains[this.context.value.transactionData.fromChainSelector].token}
                         {'\n ( $'}
                         {epsilonRound(
                           this.state.transaction.gas *
@@ -714,9 +719,9 @@ class TransactionsModal extends Component {
                       }}>
                       <View style={{marginHorizontal: 10}}>
                         {
-                          blockchain.tokens[
+                          blockchains[this.context.value.transactionData.fromChainSelector].tokens[
                             findIndexByProperty(
-                              blockchain.tokens,
+                              blockchains[this.context.value.transactionData.fromChainSelector].tokens,
                               'symbol',
                               this.context.value.transactionData.tokenSymbol,
                             )
@@ -763,7 +768,7 @@ class TransactionsModal extends Component {
                             justifyContent: 'center',
                           }}>
                           <View style={{marginHorizontal: 10}}>
-                            {blockchain.tokens[0].icon}
+                            {blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].icon}
                           </View>
                           <Text style={{color: 'white'}}>
                             {`${epsilonRound(
@@ -771,7 +776,7 @@ class TransactionsModal extends Component {
                                 this.context.value.usdConversion[0],
                               6,
                             )}`}{' '}
-                            {blockchain.tokens[0].symbol}
+                            {blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].symbol}
                           </Text>
                         </View>
                       </View>

@@ -337,6 +337,7 @@ export default class Tab3 extends Component {
                       isTransactionActive: true,
                       transactionData: {
                         walletSelector: 0,
+                        fromChainSelector: 0,
                         command:
                           this.state.tokenSelected.address ===
                           blockchain.tokens[0].address
@@ -489,6 +490,7 @@ export default class Tab3 extends Component {
                             isTransactionActive: true,
                             transactionData: {
                               walletSelector: 0,
+                              fromChainSelector: 0,
                               command: 'createAccount',
                               label: `Create Card`,
                               to,

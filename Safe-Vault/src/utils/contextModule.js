@@ -1,7 +1,7 @@
 // Basic Imports
 import React from 'react';
-import {blockchain} from './constants';
-import { ethers } from 'ethers';
+import {blockchains} from './constants';
+import {ethers} from 'ethers';
 
 const ContextModule = React.createContext();
 
@@ -12,16 +12,16 @@ class ContextProvider extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      provider: new ethers.providers.JsonRpcProvider(blockchain.rpc),
+      provider: new ethers.providers.JsonRpcProvider(blockchains[0].rpc),
       value: {
         // Main Wallet
         publicKey: null,
-        balances: blockchain.tokens.map(() => 0),
-        activeTokens: blockchain.tokens.map(() => true),
+        balances: blockchains.map(x => x.tokens.map(() => 0)),
+        activeTokens: blockchains.map(x => x.tokens.map(() => true)),
         // Savings
         publicKeySavings: null,
-        balancesSavings: blockchain.tokens.map(() => 0),
-        activeTokensSavings: blockchain.tokens.map(() => true),
+        balancesSavings: blockchains.map(x => x.tokens.map(() => 0)),
+        activeTokensSavings: blockchains.map(x => x.tokens.map(() => true)),
         // State Flag of Savings
         savingsActive: false,
         periodSelected: 1,
@@ -30,19 +30,20 @@ class ContextProvider extends React.Component {
         percentage: 0,
         // Card
         publicKeyCard: null,
-        balancesCard: blockchain.tokens.map(() => 0),
-        activeTokensCard: blockchain.tokens.map(() => true),
+        balancesCard: blockchains.map(x => x.tokens.map(() => 0)),
+        activeTokensCard: blockchains.map(x => x.tokens.map(() => true)),
         // Utils
-        usdConversion: blockchain.tokens.map(() => 1),
+        usdConversion: blockchains.map(x => x.tokens.map(() => 1)),
         // Transaction Active
         isTransactionActive: false, // false
         transactionData: {
           walletSelector: 0,
+          fromChainSelector: 0,
           command: 'transfer',
           label: '',
           to: '',
           amount: '0.0',
-          tokenSymbol: blockchain.tokens[0].symbol,
+          tokenSymbol: blockchains[0].tokens[0].symbol,
           maxFlag: false,
           withSavings: false,
         },
@@ -62,7 +63,7 @@ class ContextProvider extends React.Component {
     );
   };
 
-  setProvider = (provider) => {
+  setProvider = provider => {
     this.setState({
       provider,
     });
@@ -75,10 +76,10 @@ class ContextProvider extends React.Component {
     const {setValue, setProvider} = this;
 
     return (
-      <ContextModule.Provider        
-      // Provide all the methods and values defined above
+      <ContextModule.Provider
+        // Provide all the methods and values defined above
         value={{
-          provider, 
+          provider,
           value,
           setValue,
           setProvider,

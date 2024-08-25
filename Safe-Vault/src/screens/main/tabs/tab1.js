@@ -1,12 +1,13 @@
-import { ethers } from 'ethers';
-import React, { Component } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import {ethers} from 'ethers';
+import React, {Component} from 'react';
+import {Pressable, RefreshControl, ScrollView, Text, View} from 'react-native';
 import IconIonicons from 'react-native-vector-icons/Ionicons';
-import { abiBatchTokenBalances } from '../../../contracts/batchTokenBalances';
-import GlobalStyles, { mainColor } from '../../../styles/styles';
+import {abiBatchTokenBalances} from '../../../contracts/batchTokenBalances';
+import GlobalStyles, {mainColor} from '../../../styles/styles';
 import {
   BatchTokenBalancesAddress,
   blockchain,
+  blockchains,
   refreshRate,
 } from '../../../utils/constants';
 import ContextModule from '../../../utils/contextModule';
@@ -27,7 +28,9 @@ class Tab1 extends Component {
     super(props);
     this.state = baseTab1State;
     this.controller = new AbortController();
-    this.provider = new ethers.providers.JsonRpcProvider(blockchain.rpc);
+    this.provider = blockchains.map(
+      x => new ethers.providers.JsonRpcProvider(x.rpc),
+    );
   }
   static contextType = ContextModule;
 
@@ -68,27 +71,43 @@ class Tab1 extends Component {
 
   async getBatchBalances() {
     const {publicKey} = this.context.value;
-    const [, ...tokensArray] = blockchain.tokens.map(token => token.address);
-    const tokenBalances = new ethers.Contract(
-      BatchTokenBalancesAddress,
-      abiBatchTokenBalances,
-      this.provider,
+    const tokensArrays = blockchains
+      .map(x =>
+        x.tokens.filter(
+          token =>
+            token.address !== '0x0000000000000000000000000000000000000000',
+        ),
+      )
+      .map(x => x.map(y => y.address));
+    const batchBalancesContracts = blockchains.map(
+      (x, i) =>
+        new ethers.Contract(
+          x.batchBalancesAddress,
+          abiBatchTokenBalances,
+          this.provider[i],
+        ),
     );
-    const [balanceTemp, tempBalances, tempDecimals] = await Promise.all([
-      this.provider.getBalance(publicKey),
-      tokenBalances.batchBalanceOf(publicKey, tokensArray),
-      tokenBalances.batchDecimals(tokensArray),
-    ]);
-    const balance = parseFloat(ethers.utils.formatEther(balanceTemp));
-    const balancesTokens = tempDecimals.map((x, i) =>
-      parseFloat(
-        ethers.utils
-          .formatUnits(tempBalances[i].toString(), tempDecimals[i])
-          .toString(),
+    const nativeBalances = await Promise.all(
+      this.provider.map(
+        x => x.getBalance(publicKey) ?? ethers.BigNumber.from(0),
       ),
     );
-    const balances = [balance, ...balancesTokens];
-    console.log(balances);
+    const tokenBalances = await Promise.all(
+      batchBalancesContracts.map(
+        (x, i) =>
+          x.batchBalanceOf(publicKey, tokensArrays[i]) ??
+          ethers.BigNumber.from(0),
+      ),
+    );
+    let balancesMerge = [];
+    nativeBalances.forEach((x, i) =>
+      balancesMerge.push([x, ...tokenBalances[i]]),
+    );
+    const balances = blockchains.map((x, i) =>
+      x.tokens.map((y, j) => {
+        return ethers.utils.formatUnits(balancesMerge[i][j], y.decimals);
+      }),
+    );
     return balances;
   }
 
@@ -101,7 +120,9 @@ class Tab1 extends Component {
   // USD Conversions
 
   async getUSD() {
-    const array = blockchain.tokens.map(token => token.coingecko);
+    const array = blockchains
+      .map(x => x.tokens.map(token => token.coingecko))
+      .flat();
     var myHeaders = new Headers();
     myHeaders.append('accept', 'application/json');
     var requestOptions = {
@@ -161,9 +182,9 @@ class Tab1 extends Component {
               }}>
               {`$ ${epsilonRound(
                 arraySum(
-                  this.context.value.balances.map(
-                    (x, i) => x * this.context.value.usdConversion[i],
-                  ),
+                  this.context.value.balances
+                    .flat()
+                    .map((x, i) => x * this.context.value.usdConversion[i]),
                 ),
                 2,
               )} USD`}
@@ -233,60 +254,73 @@ class Tab1 extends Component {
             justifyContent: 'flex-start',
             alignItems: 'center',
           }}>
-          {blockchain.tokens.map((token, index) => (
-            <View key={index} style={GlobalStyles.network}>
+          {blockchains.map((blockchain, indexChain) =>
+            blockchain.tokens.map((token, indexToken, tokens) => (
               <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-around',
-                }}>
-                <View style={{marginHorizontal: 20}}>
-                  <View>{token.icon}</View>
-                </View>
-                <View style={{justifyContent: 'center'}}>
-                  <Text style={{fontSize: 18, color: 'white'}}>
-                    {token.name}
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'flex-start',
-                    }}>
-                    <Text style={{fontSize: 12, color: 'white'}}>
-                      {this.context.value.balances[index] === 0
-                        ? '0'
-                        : this.context.value.balances[index] < 0.001
-                        ? '<0.001'
-                        : epsilonRound(
-                            this.context.value.balances[index],
-                            4,
-                          )}{' '}
-                      {token.symbol}
+                key={`${indexChain}${indexToken}`}
+                style={GlobalStyles.network}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-around',
+                  }}>
+                  <View style={{marginHorizontal: 20}}>
+                    <View>{token.icon}</View>
+                  </View>
+                  <View style={{justifyContent: 'center'}}>
+                    <Text style={{fontSize: 18, color: 'white'}}>
+                      {token.name}
                     </Text>
-                    <Text style={{fontSize: 12, color: 'white'}}>
-                      {`  -  ($${epsilonRound(
-                        this.context.value.usdConversion[index],
-                        4,
-                      )} USD)`}
-                    </Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                      }}>
+                      <Text style={{fontSize: 12, color: 'white'}}>
+                        {this.context.value.balances[indexChain][indexToken] ===
+                        0
+                          ? '0'
+                          : this.context.value.balances[indexChain][
+                              indexToken
+                            ] < 0.001
+                          ? '<0.001'
+                          : epsilonRound(
+                              this.context.value.balances[indexChain][
+                                indexToken
+                              ],
+                              4,
+                            )}{' '}
+                        {token.symbol}
+                      </Text>
+                      <Text style={{fontSize: 12, color: 'white'}}>
+                        {`  -  ($${epsilonRound(
+                          this.context.value.usdConversion[
+                            indexChain * tokens.length + indexToken
+                          ],
+                          4,
+                        )} USD)`}
+                      </Text>
+                    </View>
                   </View>
                 </View>
+                <View style={{marginHorizontal: 20}}>
+                  <Text style={{color: 'white'}}>
+                    $
+                    {epsilonRound(
+                      this.context.value.balances[indexChain][indexToken] *
+                        this.context.value.usdConversion[
+                          indexChain * tokens.length + indexToken
+                        ],
+                      2,
+                    )}{' '}
+                    USD
+                  </Text>
+                </View>
               </View>
-              <View style={{marginHorizontal: 20}}>
-                <Text style={{color: 'white'}}>
-                  $
-                  {epsilonRound(
-                    this.context.value.balances[index] *
-                      this.context.value.usdConversion[index],
-                    2,
-                  )}{' '}
-                  USD
-                </Text>
-              </View>
-            </View>
-          ))}
+            )),
+          )}
         </ScrollView>
       </View>
     );

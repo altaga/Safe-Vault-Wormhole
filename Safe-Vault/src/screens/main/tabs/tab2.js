@@ -6,6 +6,7 @@ import {
   Keyboard,
   NativeEventEmitter,
   Pressable,
+  RefreshControl,
   ScrollView,
   Switch,
   Text,
@@ -14,11 +15,7 @@ import {
 import RNPickerSelect from 'react-native-picker-select';
 import {abiBatchTokenBalances} from '../../../contracts/batchTokenBalances';
 import GlobalStyles, {mainColor} from '../../../styles/styles';
-import {
-  BatchTokenBalancesAddress,
-  blockchain,
-  refreshRate,
-} from '../../../utils/constants';
+import {blockchains, refreshRate} from '../../../utils/constants';
 import ContextModule from '../../../utils/contextModule';
 import {
   arraySum,
@@ -72,7 +69,9 @@ export default class Tab2 extends Component {
   constructor(props) {
     super(props);
     this.state = baseTab2State;
-    this.provider = new ethers.providers.JsonRpcProvider(blockchain.rpc);
+    this.provider = blockchains.map(
+      x => new ethers.providers.JsonRpcProvider(x.rpc),
+    );
     this.EventEmitter = new NativeEventEmitter();
   }
 
@@ -104,12 +103,10 @@ export default class Tab2 extends Component {
 
   async componentDidMount() {
     if (this.context.value.publicKeySavings) {
-      this.EventEmitter.addListener(
-        'updateBalances', async () => {
-          await this.refresh();
-          Keyboard.dismiss();
-        }
-      )
+      this.EventEmitter.addListener('updateBalances', async () => {
+        await this.refresh();
+        Keyboard.dismiss();
+      });
       const refreshCheck = Date.now();
       const lastRefresh = await this.getLastRefreshSavings();
       if (refreshCheck - lastRefresh >= refreshRate) {
@@ -167,26 +164,44 @@ export default class Tab2 extends Component {
 
   async getBatchBalances() {
     const {publicKeySavings} = this.context.value;
-    const [, ...tokensArray] = blockchain.tokens.map(token => token.address);
-    const tokenBalances = new ethers.Contract(
-      BatchTokenBalancesAddress,
-      abiBatchTokenBalances,
-      this.provider,
+    const tokensArrays = blockchains
+      .map(x =>
+        x.tokens.filter(
+          token =>
+            token.address !== '0x0000000000000000000000000000000000000000',
+        ),
+      )
+      .map(x => x.map(y => y.address));
+    const batchBalancesContracts = blockchains.map(
+      (x, i) =>
+        new ethers.Contract(
+          x.batchBalancesAddress,
+          abiBatchTokenBalances,
+          this.provider[i],
+        ),
     );
-    const [balanceTemp, tempBalances, tempDecimals] = await Promise.all([
-      this.provider.getBalance(publicKeySavings),
-      tokenBalances.batchBalanceOf(publicKeySavings, tokensArray),
-      tokenBalances.batchDecimals(tokensArray),
-    ]);
-    const balance = parseFloat(ethers.utils.formatEther(balanceTemp));
-    const balancesTokens = tempDecimals.map((x, i) =>
-      parseFloat(
-        ethers.utils
-          .formatUnits(tempBalances[i].toString(), tempDecimals[i])
-          .toString(),
+    const nativeBalances = await Promise.all(
+      this.provider.map(
+        x => x.getBalance(publicKeySavings) ?? ethers.BigNumber.from(0),
       ),
     );
-    const balances = [balance, ...balancesTokens];
+    const tokenBalances = await Promise.all(
+      batchBalancesContracts.map(
+        (x, i) =>
+          x.batchBalanceOf(publicKeySavings, tokensArrays[i]) ??
+          ethers.BigNumber.from(0),
+      ),
+    );
+    let balancesMerge = [];
+    nativeBalances.forEach((x, i) =>
+      balancesMerge.push([x, ...tokenBalances[i]]),
+    );
+    const balances = blockchains.map((x, i) =>
+      x.tokens.map((y, j) => {
+        return ethers.utils.formatUnits(balancesMerge[i][j], y.decimals);
+      }),
+    );
+    console.log(balances);
     return balances;
   }
 
@@ -228,6 +243,19 @@ export default class Tab2 extends Component {
           height: '100%',
         }}>
         <ScrollView
+          refreshControl={
+            <RefreshControl
+              progressBackgroundColor={mainColor}
+              refreshing={this.state.refreshing}
+              onRefresh={async () => {
+                await setAsyncStorageValue({
+                  lastRefreshSavings: Date.now().toString(),
+                });
+                await this.refresh();
+              }}
+            />
+          }
+          style={{width: '100%', height: '100%'}}
           contentContainerStyle={[
             {
               height: '100%',
@@ -255,9 +283,9 @@ export default class Tab2 extends Component {
                   }}>
                   {`$ ${epsilonRound(
                     arraySum(
-                      this.context.value.balancesSavings.map(
-                        (x, i) => x * this.context.value.usdConversion[i],
-                      ),
+                      this.context.value.balancesSavings
+                        .flat()
+                        .map((x, i) => x * this.context.value.usdConversion[i]),
                     ),
                     2,
                   )} USD`}
@@ -505,13 +533,14 @@ export default class Tab2 extends Component {
                             isTransactionActive: true,
                             transactionData: {
                               walletSelector: 1,
+                              fromChainSelector: 0,
                               command: 'transfer',
                               label: `Transfer BNB`,
                               to: this.context.value.publicKey,
                               amount: this.context.value.balancesSavings[0],
                               tokenSymbol: 'BNB',
-                              maxFlag : true,
-                              withSavings: false
+                              maxFlag: true,
+                              withSavings: false,
                             },
                           });
                         }}>
