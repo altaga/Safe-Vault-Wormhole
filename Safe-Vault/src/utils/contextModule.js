@@ -12,8 +12,9 @@ class ContextProvider extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      provider: new ethers.providers.JsonRpcProvider(blockchains[0].rpc),
       value: {
+        // Wormhole
+        pendingRedeems : [],
         // Main Wallet
         publicKey: null,
         balances: blockchains.map(x => x.tokens.map(() => 0)),
@@ -29,7 +30,8 @@ class ContextProvider extends React.Component {
         savingsDate: 0,
         percentage: 0,
         // Card
-        publicKeyCard: null,
+        cardIndex : -1,
+        publicKeyCard: blockchains.map(_ => ""),
         balancesCard: blockchains.map(x => x.tokens.map(() => 0)),
         activeTokensCard: blockchains.map(x => x.tokens.map(() => true)),
         // Utils
@@ -37,8 +39,10 @@ class ContextProvider extends React.Component {
         // Transaction Active
         isTransactionActive: false, // false
         transactionData: {
+          vaa:"",
           walletSelector: 0,
           fromChainSelector: 0,
+          toChainSelector: 0,
           command: 'transfer',
           label: '',
           to: '',

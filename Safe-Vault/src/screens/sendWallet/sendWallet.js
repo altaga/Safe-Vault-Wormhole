@@ -46,10 +46,11 @@ function setChains(array) {
 const SendWalletBaseState = {
   stage: 0,
   loading: false,
-  amount: '0.000001',
-  fromChainSelector: setChains(blockchains)[3],
+  amount: '',
+  fromChainSelector: setChains(blockchains)[0], // 0
+  toChainSelector: setChains(blockchains)[0], // 0
   tokenSelected: setTokens(blockchains[0].tokens)[0], // 0
-  toAddress: '0xD59C797f8398a602B546227655179ab49A5973fF', // ""
+  toAddress: '', // ""
 };
 
 class SendWallet extends Component {
@@ -128,7 +129,7 @@ class SendWallet extends Component {
         </View>
         {this.state.stage === 0 && (
           <KeyboardAwareScrollViewComponent>
-            <SafeAreaView style={GlobalStyles.mainSend}>
+            <SafeAreaView style={[GlobalStyles.mainSend, {height: '100%'}]}>
               <ScrollView
                 contentContainerStyle={{
                   justifyContent: 'center',
@@ -167,7 +168,7 @@ class SendWallet extends Component {
                       <IconIonIcons name="qr-code" size={30} color={'white'} />
                     </Pressable>
                   </View>
-                  <Text style={GlobalStyles.formTitle}>Select Chain</Text>
+                  <Text style={GlobalStyles.formTitle}>Origin Chain</Text>
                   <RNPickerSelect
                     style={{
                       inputAndroidContainer: {
@@ -194,7 +195,31 @@ class SendWallet extends Component {
                         });
                     }}
                   />
-                  <Text style={GlobalStyles.formTitle}>Select Token</Text>
+                  <Text style={GlobalStyles.formTitle}>Destination Chain</Text>
+                  <RNPickerSelect
+                    style={{
+                      inputAndroidContainer: {
+                        textAlign: 'center',
+                      },
+                      inputAndroid: {
+                        textAlign: 'center',
+                        color: 'gray',
+                      },
+                      viewContainer: {
+                        ...GlobalStyles.input,
+                        width: Dimensions.get('screen').width * 0.9,
+                      },
+                    }}
+                    value={this.state.toChainSelector.value}
+                    items={setChains(blockchains)}
+                    onValueChange={value => {
+                      value !== this.state.toChainSelector.value &&
+                        this.setState({
+                          toChainSelector: setChains(blockchains)[value - 1],
+                        });
+                    }}
+                  />
+                  <Text style={GlobalStyles.formTitle}>Token</Text>
                   <RNPickerSelect
                     style={{
                       inputAndroidContainer: {
@@ -268,12 +293,13 @@ class SendWallet extends Component {
                       : {},
                   ]}
                   onPress={() => {
-                    console.log(this.state);
                     this.context.setValue({
                       isTransactionActive: true,
                       transactionData: {
+                        vaa:"",
                         walletSelector: 0,
                         fromChainSelector: this.state.fromChainSelector.value - 1,
+                        toChainSelector: this.state.toChainSelector.value - 1,
                         command:
                           this.state.tokenSelected.address ===
                           blockchains[this.state.fromChainSelector.value - 1].tokens[0].address

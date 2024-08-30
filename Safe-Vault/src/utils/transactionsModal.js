@@ -1,6 +1,6 @@
-import Safe, { SafeFactory } from '@safe-global/protocol-kit';
-import { ethers } from 'ethers';
-import React, { Component, Fragment } from 'react';
+import Safe, {SafeFactory} from '@safe-global/protocol-kit';
+import {ethers} from 'ethers';
+import React, {Component, Fragment} from 'react';
 import {
   Dimensions,
   Image,
@@ -12,23 +12,38 @@ import {
   View,
 } from 'react-native';
 import checkMark from '../assets/checkMark.png';
-import { abiERC20 } from '../contracts/erc20';
-import GlobalStyles, { mainColor, secondaryColor } from '../styles/styles';
-import { blockchains, CloudAccountController } from './constants';
+import {abiERC20} from '../contracts/erc20';
+import GlobalStyles, {mainColor, secondaryColor} from '../styles/styles';
+import {blockchains, CloudAccountController} from './constants';
 import ContextModule from './contextModule';
 import {
   balancedSaving,
   epsilonRound,
   findIndexByProperty,
+  formatPublicKeyToUint8Array,
   getEncryptedStorageValue,
   percentageSaving,
   setAsyncStorageValue,
 } from './utils';
+import {abiBridge} from '../contracts/wormBridge';
+
+function getIndexByChain(chain) {
+  let counter = 0;
+  for (let i = 0; i < blockchains.length; i++) {
+    if (i === chain) {
+      return counter;
+    } else {
+      counter += blockchains[i].tokens.length;
+    }
+  }
+  return -1;
+}
 
 const baseTransactionsModalState = {
   stage: 0, // 0
   loading: true,
   explorerURL: '',
+  approveFlag: false,
   transaction: {
     to: '',
     amount: '0.0',
@@ -74,11 +89,18 @@ class TransactionsModal extends Component {
     } else if (this.context.value.transactionData.walletSelector === 1) {
       privateKey = await getEncryptedStorageValue('privateKeySavings');
     }
+    const tokenIndex = findIndexByProperty(
+      blockchains[this.context.value.transactionData.fromChainSelector].tokens,
+      'symbol',
+      this.context.value.transactionData.tokenSymbol,
+    );
     const signer = new ethers.Wallet(
       privateKey,
       this.provider[this.context.value.transactionData.fromChainSelector],
     );
-    const gasPrice = await this.provider[this.context.value.transactionData.fromChainSelector].getGasPrice();
+    const gasPrice = await this.provider[
+      this.context.value.transactionData.fromChainSelector
+    ].getGasPrice();
     let savedAmount = ethers.BigNumber.from(0);
     let gasSavings = ethers.BigNumber.from(0);
     if (this.context.value.transactionData.command === 'transfer') {
@@ -91,7 +113,11 @@ class TransactionsModal extends Component {
           this.context.value.protocolSelected === 1
             ? balancedSaving(
                 this.context.value.transactionData.amount,
-                this.context.value.usdConversion[0],
+                this.context.value.usdConversion[
+                  getIndexByChain(
+                    this.context.value.transactionData.fromChainSelector,
+                  )
+                ],
               )
             : percentageSaving(
                 this.context.value.transactionData.amount,
@@ -100,48 +126,115 @@ class TransactionsModal extends Component {
         const transaction = {
           from: await signer.getAddress(),
           to: this.context.value.publicKeySavings,
-          value: ethers.utils.parseEther(
-            epsilonRound(value, 18).toLocaleString('fullwide', {
-              useGrouping: false,
-            }),
-          ),
+          value: ethers.utils.parseEther(epsilonRound(value, 18).toFixed(18)),
         };
-        savedAmount = value * this.context.value.usdConversion[0];
-        gasSavings = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
+        console.log(transaction);
+        savedAmount =
+          value *
+          this.context.value.usdConversion[
+            getIndexByChain(
+              this.context.value.transactionData.fromChainSelector,
+            )
+          ];
+        gasSavings = await this.provider[
+          this.context.value.transactionData.fromChainSelector
+        ].estimateGas(transaction);
       }
       let transaction = null;
-      if (this.context.value.transactionData.maxFlag) {
-        transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.transactionData.to,
-          value: ethers.BigNumber.from(0),
-        };
-        const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
-        const gasNeeded = gas.mul(gasPrice);
-        transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.transactionData.to,
-          value: ethers.utils
-            .parseEther(
-              this.context.value.transactionData.amount.toLocaleString(
-                'fullwide',
-                {
-                  useGrouping: false,
-                },
-              ),
-            )
-            .sub(gasNeeded),
-        };
+      if (
+        this.context.value.transactionData.fromChainSelector ===
+        this.context.value.transactionData.toChainSelector
+      ) {
+        if (this.context.value.transactionData.maxFlag) {
+          transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.transactionData.to,
+            value: ethers.BigNumber.from(0),
+          };
+          const gas = await this.provider[
+            this.context.value.transactionData.fromChainSelector
+          ].estimateGas(transaction);
+          const gasNeeded = gas.mul(gasPrice);
+          transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.transactionData.to,
+            value: ethers.utils
+              .parseEther(this.context.value.transactionData.amount.toFixed(18))
+              .sub(gasNeeded),
+          };
+        } else {
+          transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.transactionData.to,
+            value: ethers.utils.parseEther(
+              this.context.value.transactionData.amount,
+            ),
+          };
+        }
       } else {
-        transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.transactionData.to,
-          value: ethers.utils.parseEther(
-            this.context.value.transactionData.amount,
-          ),
-        };
+        const contractBridge = new ethers.Contract(
+          blockchains[
+            this.context.value.transactionData.fromChainSelector
+          ].wormholeAddress,
+          abiBridge,
+          signer,
+        );
+        if (this.context.value.transactionData.maxFlag) {
+          transaction =
+            await contractBridge.populateTransaction.wrapAndTransferETH(
+              blockchains[this.context.value.transactionData.toChainSelector]
+                .wormholeChainId,
+              formatPublicKeyToUint8Array(
+                this.context.value.transactionData.to,
+              ),
+              0n,
+              0,
+              {
+                value: ethers.BigNumber.from(0),
+              },
+            );
+          const gas = await this.provider[
+            this.context.value.transactionData.fromChainSelector
+          ].estimateGas(transaction);
+          const gasNeeded = gas.mul(gasPrice);
+          transaction =
+            await contractBridge.populateTransaction.wrapAndTransferETH(
+              blockchains[this.context.value.transactionData.toChainSelector]
+                .wormholeChainId,
+              formatPublicKeyToUint8Array(
+                this.context.value.transactionData.to,
+              ),
+              0n,
+              0,
+              {
+                value: ethers.utils
+                  .parseEther(
+                    this.context.value.transactionData.amount.toFixed(18),
+                  )
+                  .sub(gasNeeded),
+              },
+            );
+        } else {
+          transaction =
+            await contractBridge.populateTransaction.wrapAndTransferETH(
+              blockchains[this.context.value.transactionData.toChainSelector]
+                .wormholeChainId,
+              formatPublicKeyToUint8Array(
+                this.context.value.transactionData.to,
+              ),
+              0n,
+              0,
+              {
+                value: ethers.utils.parseEther(
+                  this.context.value.transactionData.amount,
+                ),
+              },
+            );
+        }
       }
-      const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
+      const gas = await this.provider[
+        this.context.value.transactionData.fromChainSelector
+      ].estimateGas(transaction);
       const gasDisplay = ethers.utils.formatEther(
         gasPrice.mul(gas.add(gasSavings)),
       );
@@ -150,20 +243,72 @@ class TransactionsModal extends Component {
           to: this.context.value.transactionData.to,
           amount: this.context.value.transactionData.amount,
           gas: gasDisplay,
-          tokenSymbol: blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].symbol,
+          tokenSymbol:
+            blockchains[this.context.value.transactionData.fromChainSelector]
+              .tokens[0].symbol,
           savedAmount,
         },
         loading: false,
+        approveFlag: false,
       });
     } else if (this.context.value.transactionData.command === 'transferToken') {
+      if (
+        this.context.value.savingsActive &&
+        this.context.value.transactionData.walletSelector === 0 &&
+        this.context.value.transactionData.withSavings
+      ) {
+        const valueOnUSD =
+          this.context.value.transactionData.amount *
+          this.context.value.usdConversion[
+            getIndexByChain(
+              this.context.value.transactionData.fromChainSelector,
+            ) + tokenIndex
+          ];
+        const valueOnETH =
+          valueOnUSD /
+          this.context.value.usdConversion[
+            getIndexByChain(
+              this.context.value.transactionData.fromChainSelector,
+            )
+          ];
+        const value =
+          this.context.value.protocolSelected === 1
+            ? balancedSaving(
+                valueOnETH,
+                this.context.value.usdConversion[
+                  getIndexByChain(
+                    this.context.value.transactionData.fromChainSelector,
+                  )
+                ],
+              )
+            : percentageSaving(valueOnETH, this.context.value.percentage);
+        const transaction = {
+          from: await signer.getAddress(),
+          to: this.context.value.publicKeySavings,
+          value: ethers.utils.parseEther(epsilonRound(value, 18).toFixed(18)),
+        };
+        console.log(transaction);
+        savedAmount =
+          value *
+          this.context.value.usdConversion[
+            getIndexByChain(
+              this.context.value.transactionData.fromChainSelector,
+            )
+          ];
+        gasSavings = await this.provider[
+          this.context.value.transactionData.fromChainSelector
+        ].estimateGas(transaction);
+      }
+      const contractBridge = new ethers.Contract(
+        blockchains[
+          this.context.value.transactionData.fromChainSelector
+        ].wormholeAddress,
+        abiBridge,
+        signer,
+      );
       const tokenInfo =
-        blockchains[this.context.value.transactionData.fromChainSelector].tokens[
-          findIndexByProperty(
-            blockchains[this.context.value.transactionData.fromChainSelector].tokens,
-            'symbol',
-            this.context.value.transactionData.tokenSymbol,
-          )
-        ];
+        blockchains[this.context.value.transactionData.fromChainSelector]
+          .tokens[tokenIndex];
       const tokenContract = new ethers.Contract(
         tokenInfo.address,
         abiERC20,
@@ -173,45 +318,52 @@ class TransactionsModal extends Component {
         this.context.value.transactionData.amount,
         tokenInfo.decimals,
       );
-      const transaction = await tokenContract.populateTransaction.transfer(
-        this.context.value.transactionData.to,
-        amount,
-        {
-          from: await signer.getAddress(),
-        },
-      );
+      let transaction = null;
       if (
-        this.context.value.savingsActive &&
-        this.context.value.transactionData.walletSelector === 0 &&
-        this.context.value.transactionData.withSavings
+        this.context.value.transactionData.fromChainSelector ===
+        this.context.value.transactionData.toChainSelector
       ) {
-        const valueOnUSD =
-          this.context.value.transactionData.amount *
-          this.context.value.usdConversion[
-            findIndexByProperty(
-              blockchains[this.context.value.transactionData.fromChainSelector].tokens,
-              'symbol',
-              this.context.value.transactionData.tokenSymbol,
-            )
-          ];
-        const valueOnETH = valueOnUSD / this.context.value.usdConversion[0];
-        const value =
-          this.context.value.protocolSelected === 1
-            ? balancedSaving(valueOnETH, this.context.value.usdConversion[0])
-            : percentageSaving(valueOnETH, this.context.value.percentage);
-        const transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.publicKeySavings,
-          value: ethers.utils.parseEther(
-            epsilonRound(value, 18).toLocaleString('fullwide', {
-              useGrouping: false,
-            }),
-          ),
-        };
-        savedAmount = value * this.context.value.usdConversion[0];
-        gasSavings = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
+        transaction = await tokenContract.populateTransaction.transfer(
+          this.context.value.transactionData.to,
+          amount,
+          {
+            from: await signer.getAddress(),
+          },
+        );
+      } else {
+        const publicKey = await signer.getAddress();
+        const approved = await tokenContract.allowance(
+          publicKey,
+          blockchains[this.context.value.transactionData.fromChainSelector]
+            .wormholeAddress,
+        );
+        if (approved.lt(amount)) {
+          console.log('Approving');
+          transaction = await tokenContract.populateTransaction.approve(
+            blockchains[this.context.value.transactionData.toChainSelector]
+              .wormholeAddress,
+            amount,
+            {
+              from: publicKey,
+            },
+          );
+          this.setState({approveFlag: true});
+        } else {
+          console.log('Approved');
+          transaction = await contractBridge.populateTransaction.transferTokens(
+            tokenInfo.address,
+            amount,
+            blockchains[this.context.value.transactionData.toChainSelector]
+              .wormholeChainId,
+            formatPublicKeyToUint8Array(this.context.value.transactionData.to),
+            0n,
+            0,
+          );
+        }
       }
-      const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
+      const gas = await this.provider[
+        this.context.value.transactionData.fromChainSelector
+      ].estimateGas(transaction);
       const gasDisplay = ethers.utils.formatEther(
         gasPrice.mul(gas.add(gasSavings)),
       );
@@ -232,22 +384,58 @@ class TransactionsModal extends Component {
       };
       const safe = await Safe.init({
         signer: privateKey,
-        provider: blockchains[this.context.value.transactionData.fromChainSelector].rpc,
+        provider:
+          blockchains[this.context.value.transactionData.fromChainSelector].rpc,
         predictedSafe: {
           safeAccountConfig,
         },
       });
       const transaction = await safe.createSafeDeploymentTransaction();
-      const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
+      const gas = await this.provider[
+        this.context.value.transactionData.fromChainSelector
+      ].estimateGas(transaction);
       const gasDisplay = ethers.utils.formatEther(gasPrice.mul(gas));
       await this.setStateAsync({
         transaction: {
           to: this.context.value.transactionData.to,
           amount: this.context.value.transactionData.amount,
           gas: gasDisplay,
-          tokenSymbol: blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].symbol,
+          tokenSymbol:
+            blockchains[this.context.value.transactionData.fromChainSelector]
+              .tokens[0].symbol,
         },
         loading: false,
+        approveFlag: false,
+      });
+    } else if (
+      this.context.value.transactionData.command === 'redeemWormhole'
+    ) {
+      const contractBridge = new ethers.Contract(
+        blockchains[
+          this.context.value.transactionData.fromChainSelector
+        ].wormholeAddress,
+        abiBridge,
+        signer,
+      );
+      const transaction =
+        await contractBridge.populateTransaction.completeTransfer(
+          this.context.value.transactionData.vaa,
+        );
+      const gas = await this.provider[
+        this.context.value.transactionData.fromChainSelector
+      ].estimateGas(transaction);
+      const gasDisplay = ethers.utils.formatEther(gasPrice.mul(gas));
+      await this.setStateAsync({
+        transaction: {
+          to: this.context.value.transactionData.to,
+          amount: this.context.value.transactionData.amount,
+          gas: gasDisplay,
+          tokenSymbol:
+            blockchains[this.context.value.transactionData.fromChainSelector]
+              .tokens[0].symbol,
+        },
+        loading: false,
+        approveFlag: false,
       });
     }
   }
@@ -257,12 +445,20 @@ class TransactionsModal extends Component {
       loading: true,
     });
     let privateKey = null;
+    const tokenIndex = findIndexByProperty(
+      blockchains[this.context.value.transactionData.fromChainSelector].tokens,
+      'symbol',
+      this.context.value.transactionData.tokenSymbol,
+    );
     if (this.context.value.transactionData.walletSelector === 0) {
       privateKey = await getEncryptedStorageValue('privateKey');
     } else if (this.context.value.transactionData.walletSelector === 1) {
       privateKey = await getEncryptedStorageValue('privateKeySavings');
     }
-    const signer = new ethers.Wallet(privateKey, this.provider[this.context.value.transactionData.fromChainSelector]);
+    const signer = new ethers.Wallet(
+      privateKey,
+      this.provider[this.context.value.transactionData.fromChainSelector],
+    );
     if (this.context.value.transactionData.command === 'transfer') {
       if (
         this.context.value.savingsActive &&
@@ -273,7 +469,11 @@ class TransactionsModal extends Component {
           this.context.value.protocolSelected === 1
             ? balancedSaving(
                 this.context.value.transactionData.amount,
-                this.context.value.usdConversion[0],
+                this.context.value.usdConversion[
+                  getIndexByChain(
+                    this.context.value.transactionData.fromChainSelector,
+                  )
+                ],
               )
             : percentageSaving(
                 this.context.value.transactionData.amount,
@@ -282,62 +482,130 @@ class TransactionsModal extends Component {
         const transaction = {
           from: await signer.getAddress(),
           to: this.context.value.publicKeySavings,
-          value: ethers.utils.parseEther(
-            value.toLocaleString('fullwide', {useGrouping: false}),
-          ),
+          value: ethers.utils.parseEther(value.toFixed(18)),
         };
+        console.log(transaction);
         const tx = await signer.sendTransaction(transaction);
         await tx.wait();
       }
       let transaction = null;
-      if (this.context.value.transactionData.maxFlag) {
-        const gasPrice = await this.provider[this.context.value.transactionData.fromChainSelector].getGasPrice();
-        transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.transactionData.to,
-          value: ethers.BigNumber.from(0),
-        };
-        const gas = await this.provider[this.context.value.transactionData.fromChainSelector].estimateGas(transaction);
-        const gasNeeded = gas.mul(gasPrice);
-        transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.transactionData.to,
-          value: ethers.utils
-            .parseEther(
-              this.context.value.transactionData.amount.toLocaleString(
-                'fullwide',
-                {
-                  useGrouping: false,
-                },
-              ),
-            )
-            .sub(gasNeeded),
-        };
+      if (
+        this.context.value.transactionData.fromChainSelector ===
+        this.context.value.transactionData.toChainSelector
+      ) {
+        if (this.context.value.transactionData.maxFlag) {
+          transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.transactionData.to,
+            value: ethers.BigNumber.from(0),
+          };
+          const gas = await this.provider[
+            this.context.value.transactionData.fromChainSelector
+          ].estimateGas(transaction);
+          const gasNeeded = gas.mul(gasPrice);
+          transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.transactionData.to,
+            value: ethers.utils
+              .parseEther(this.context.value.transactionData.amount.toFixed(18))
+              .sub(gasNeeded),
+          };
+        } else {
+          transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.transactionData.to,
+            value: ethers.utils.parseEther(
+              this.context.value.transactionData.amount,
+            ),
+          };
+        }
       } else {
-        transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.transactionData.to,
-          value: ethers.utils.parseEther(
-            this.context.value.transactionData.amount,
-          ),
-        };
+        const contractBridge = new ethers.Contract(
+          blockchains[
+            this.context.value.transactionData.fromChainSelector
+          ].wormholeAddress,
+          abiBridge,
+          signer,
+        );
+        if (this.context.value.transactionData.maxFlag) {
+          transaction =
+            await contractBridge.populateTransaction.wrapAndTransferETH(
+              blockchains[this.context.value.transactionData.toChainSelector]
+                .wormholeChainId,
+              formatPublicKeyToUint8Array(
+                this.context.value.transactionData.to,
+              ),
+              0n,
+              0,
+              {
+                value: ethers.BigNumber.from(0),
+              },
+            );
+          const gas = await this.provider[
+            this.context.value.transactionData.fromChainSelector
+          ].estimateGas(transaction);
+          const gasNeeded = gas.mul(gasPrice);
+          transaction =
+            await contractBridge.populateTransaction.wrapAndTransferETH(
+              blockchains[this.context.value.transactionData.toChainSelector]
+                .wormholeChainId,
+              formatPublicKeyToUint8Array(
+                this.context.value.transactionData.to,
+              ),
+              0n,
+              0,
+              {
+                value: ethers.utils
+                  .parseEther(
+                    this.context.value.transactionData.amount.toFixed(18),
+                  )
+                  .sub(gasNeeded),
+              },
+            );
+        } else {
+          transaction =
+            await contractBridge.populateTransaction.wrapAndTransferETH(
+              blockchains[this.context.value.transactionData.toChainSelector]
+                .wormholeChainId,
+              formatPublicKeyToUint8Array(
+                this.context.value.transactionData.to,
+              ),
+              0n,
+              0,
+              {
+                value: ethers.utils.parseEther(
+                  this.context.value.transactionData.amount,
+                ),
+              },
+            );
+        }
       }
       const tx = await signer.sendTransaction(transaction);
       console.log(tx);
       await tx.wait();
       await this.setStateAsync({
         loading: false,
-        explorerURL: `${blockchains[this.context.value.transactionData.fromChainSelector].blockExplorer}tx/${tx.hash}`,
+        approveFlag: false,
+        explorerURL: `${
+          this.context.value.transactionData.fromChainSelector ===
+            this.context.value.transactionData.toChainSelector ||
+          this.state.approveFlag
+            ? blockchains[this.context.value.transactionData.fromChainSelector]
+                .blockExplorer
+            : 'https://wormholescan.io/#/'
+        }tx/${tx.hash}`,
       });
     } else if (this.context.value.transactionData.command === 'transferToken') {
+      const contractBridge = new ethers.Contract(
+        blockchains[
+          this.context.value.transactionData.fromChainSelector
+        ].wormholeAddress,
+        abiBridge,
+        signer,
+      );
       const tokenInfo =
-      blockchains[this.context.value.transactionData.fromChainSelector].tokens[
-          findIndexByProperty(
-            blockchains[this.context.value.transactionData.fromChainSelector].tokens,
-            'symbol',
-            this.context.value.transactionData.tokenSymbol,
-          )
-        ];
+        blockchains[this.context.value.transactionData.fromChainSelector]
+          .tokens[tokenIndex];
       const tokenContract = new ethers.Contract(
         tokenInfo.address,
         abiERC20,
@@ -347,53 +615,146 @@ class TransactionsModal extends Component {
         this.context.value.transactionData.amount,
         tokenInfo.decimals,
       );
-      const transaction = await tokenContract.populateTransaction.transfer(
-        this.context.value.transactionData.to,
-        amount,
-        {
-          from: await signer.getAddress(),
-        },
-      );
+      let transaction = null;
       if (
-        this.context.value.savingsActive &&
-        this.context.value.transactionData.walletSelector === 0 &&
-        this.context.value.transactionData.withSavings
+        this.context.value.transactionData.fromChainSelector ===
+        this.context.value.transactionData.toChainSelector
       ) {
-        const valueOnUSD =
-          this.context.value.transactionData.amount *
-          this.context.value.usdConversion[
-            findIndexByProperty(
-              blockchains[this.context.value.transactionData.fromChainSelector].tokens,
-              'symbol',
-              this.context.value.transactionData.tokenSymbol,
-            )
-          ];
-        const valueOnETH = valueOnUSD / this.context.value.usdConversion[0];
-        const value =
-          this.context.value.protocolSelected === 1
-            ? balancedSaving(valueOnETH, this.context.value.usdConversion[0])
-            : percentageSaving(valueOnETH, this.context.value.percentage);
-        const transaction = {
-          from: await signer.getAddress(),
-          to: this.context.value.publicKeySavings,
-          value: ethers.utils.parseEther(
-            epsilonRound(value, 18).toLocaleString('fullwide', {
-              useGrouping: false,
-            }),
-          ),
-        };
-        const tx = await signer.sendTransaction(transaction);
-        await tx.wait();
+        if (
+          this.context.value.savingsActive &&
+          this.context.value.transactionData.walletSelector === 0 &&
+          this.context.value.transactionData.withSavings
+        ) {
+          const valueOnUSD =
+            this.context.value.transactionData.amount *
+            this.context.value.usdConversion[
+              getIndexByChain(
+                this.context.value.transactionData.fromChainSelector,
+              ) + tokenIndex
+            ];
+          const valueOnETH =
+            valueOnUSD /
+            this.context.value.usdConversion[
+              getIndexByChain(
+                this.context.value.transactionData.fromChainSelector,
+              )
+            ];
+          const value =
+            this.context.value.protocolSelected === 1
+              ? balancedSaving(
+                  valueOnETH,
+                  this.context.value.usdConversion[
+                    getIndexByChain(
+                      this.context.value.transactionData.fromChainSelector,
+                    )
+                  ],
+                )
+              : percentageSaving(valueOnETH, this.context.value.percentage);
+          const transaction = {
+            from: await signer.getAddress(),
+            to: this.context.value.publicKeySavings,
+            value: ethers.utils.parseEther(epsilonRound(value, 18).toFixed(18)),
+          };
+          console.log(transaction);
+          const tx = await signer.sendTransaction(transaction);
+          await tx.wait();
+        }
+        transaction = await tokenContract.populateTransaction.transfer(
+          this.context.value.transactionData.to,
+          amount,
+          {
+            from: await signer.getAddress(),
+          },
+        );
+      } else {
+        const publicKey = await signer.getAddress();
+        const approved = await tokenContract.allowance(
+          publicKey,
+          blockchains[this.context.value.transactionData.fromChainSelector]
+            .wormholeAddress,
+        );
+        if (approved.lt(amount)) {
+          console.log('Approving');
+          transaction = await tokenContract.populateTransaction.approve(
+            blockchains[this.context.value.transactionData.fromChainSelector]
+              .wormholeAddress,
+            amount,
+            {
+              from: publicKey,
+            },
+          );
+        } else {
+          console.log('Approved');
+          if (
+            this.context.value.savingsActive &&
+            this.context.value.transactionData.walletSelector === 0 &&
+            this.context.value.transactionData.withSavings
+          ) {
+            const valueOnUSD =
+              this.context.value.transactionData.amount *
+              this.context.value.usdConversion[
+                getIndexByChain(
+                  this.context.value.transactionData.fromChainSelector,
+                ) + tokenIndex
+              ];
+            const valueOnETH =
+              valueOnUSD /
+              this.context.value.usdConversion[
+                getIndexByChain(
+                  this.context.value.transactionData.fromChainSelector,
+                )
+              ];
+            const value =
+              this.context.value.protocolSelected === 1
+                ? balancedSaving(
+                    valueOnETH,
+                    this.context.value.usdConversion[
+                      getIndexByChain(
+                        this.context.value.transactionData.fromChainSelector,
+                      )
+                    ],
+                  )
+                : percentageSaving(valueOnETH, this.context.value.percentage);
+            const transaction = {
+              from: await signer.getAddress(),
+              to: this.context.value.publicKeySavings,
+              value: ethers.utils.parseEther(
+                epsilonRound(value, 18).toFixed(18),
+              ),
+            };
+            console.log(transaction);
+            const tx = await signer.sendTransaction(transaction);
+            await tx.wait();
+          }
+          transaction = await contractBridge.populateTransaction.transferTokens(
+            tokenInfo.address,
+            amount,
+            blockchains[this.context.value.transactionData.toChainSelector]
+              .wormholeChainId,
+            formatPublicKeyToUint8Array(this.context.value.transactionData.to),
+            0n,
+            0,
+          );
+        }
       }
       const tx = await signer.sendTransaction(transaction);
       await tx.wait();
       await this.setStateAsync({
         loading: false,
-        explorerURL: `${blockchains[this.context.value.transactionData.fromChainSelector].blockExplorer}tx/${tx.hash}`,
+        approveFlag: false,
+        explorerURL: `${
+          this.context.value.transactionData.fromChainSelector ===
+            this.context.value.transactionData.toChainSelector ||
+          this.state.approveFlag
+            ? blockchains[this.context.value.transactionData.fromChainSelector]
+                .blockExplorer
+            : 'https://wormholescan.io/#/'
+        }tx/${tx.hash}`,
       });
     } else if (this.context.value.transactionData.command === 'createAccount') {
       const safeFactory = await SafeFactory.init({
-        provider: blockchains[this.context.value.transactionData.fromChainSelector].rpc,
+        provider:
+          blockchains[this.context.value.transactionData.fromChainSelector].rpc,
         signer: privateKey,
       });
       const safeAccountConfig = {
@@ -407,24 +768,60 @@ class TransactionsModal extends Component {
           const publicKeyCard = await safeFactory.predictSafeAddress(
             safeAccountConfig,
           );
-          console.log(publicKeyCard);
+          let temp = this.context.value.publicKeyCard;
+          temp[this.context.value.transactionData.fromChainSelector] =
+            publicKeyCard;
           await setAsyncStorageValue({
-            publicKeyCard,
+            publicKeyCard: temp,
           });
           this.context.setValue({
-            publicKeyCard,
+            publicKeyCard: temp,
           });
           await this.setStateAsync({
             loading: false,
-            explorerURL: `${blockchains[this.context.value.transactionData.fromChainSelector].blockExplorer}tx/${txHash}`,
+            approveFlag: false,
+            explorerURL: `${
+              blockchains[this.context.value.transactionData.fromChainSelector]
+                .blockExplorer
+            }tx/${txHash}`,
           });
         },
       });
+    } else if (
+      this.context.value.transactionData.command === 'redeemWormhole'
+    ) {
+      const contractBridge = new ethers.Contract(
+        blockchains[
+          this.context.value.transactionData.fromChainSelector
+        ].wormholeAddress,
+        abiBridge,
+        signer,
+      );
+      const transaction =
+        await contractBridge.populateTransaction.completeTransfer(
+          this.context.value.transactionData.vaa,
+        );
+      const tx = await signer.sendTransaction(transaction);
+      await tx.wait();
+      await this.setStateAsync({
+        loading: false,
+        approveFlag: false,
+        explorerURL: `${
+          blockchains[this.context.value.transactionData.fromChainSelector]
+            .blockExplorer
+        }tx/${tx.hash}`,
+      });
     }
+    this.EventEmitter.emit('updateRedeems');
     this.EventEmitter.emit('updateBalances');
   }
 
   render() {
+    const tokenIndex = findIndexByProperty(
+      blockchains[this.context.value.transactionData.fromChainSelector].tokens,
+      'symbol',
+      this.context.value.transactionData.tokenSymbol,
+    );
     return (
       <View
         style={{
@@ -474,7 +871,9 @@ class TransactionsModal extends Component {
                       fontSize: 26,
                       width: '100%',
                     }}>
-                    {this.context.value.transactionData.label}
+                    {this.state.approveFlag
+                      ? `Approve ${this.context.value.transactionData.tokenSymbol}`
+                      : this.context.value.transactionData.label}
                   </Text>
                   <View
                     style={{
@@ -536,11 +935,10 @@ class TransactionsModal extends Component {
                         {epsilonRound(
                           this.state.transaction.amount *
                             this.context.value.usdConversion[
-                              findIndexByProperty(
-                                blockchains[this.context.value.transactionData.fromChainSelector].tokens,
-                                'symbol',
-                                this.state.transaction.tokenSymbol,
-                              )
+                              getIndexByChain(
+                                this.context.value.transactionData
+                                  .fromChainSelector,
+                              ) + tokenIndex
                             ],
                           6,
                         )}
@@ -576,11 +974,20 @@ class TransactionsModal extends Component {
                     ) : (
                       <Fragment>
                         {epsilonRound(this.state.transaction.gas, 8)}{' '}
-                        {blockchains[this.context.value.transactionData.fromChainSelector].token}
+                        {
+                          blockchains[
+                            this.context.value.transactionData.fromChainSelector
+                          ].token
+                        }
                         {'\n ( $'}
                         {epsilonRound(
                           this.state.transaction.gas *
-                            this.context.value.usdConversion[0],
+                            this.context.value.usdConversion[
+                              getIndexByChain(
+                                this.context.value.transactionData
+                                  .fromChainSelector,
+                              )
+                            ],
                           6,
                         )}
                         {' USD )'}
@@ -706,7 +1113,7 @@ class TransactionsModal extends Component {
                           Transaction
                         </Text>
                         <Text style={{fontSize: 14, color: 'white'}}>
-                          {this.context.value.transactionData.label}
+                          eth_sendTransaction
                         </Text>
                       </View>
                     </View>
@@ -719,13 +1126,9 @@ class TransactionsModal extends Component {
                       }}>
                       <View style={{marginHorizontal: 10}}>
                         {
-                          blockchains[this.context.value.transactionData.fromChainSelector].tokens[
-                            findIndexByProperty(
-                              blockchains[this.context.value.transactionData.fromChainSelector].tokens,
-                              'symbol',
-                              this.context.value.transactionData.tokenSymbol,
-                            )
-                          ].icon
+                          blockchains[
+                            this.context.value.transactionData.fromChainSelector
+                          ].tokens[tokenIndex].icon
                         }
                       </View>
                       <Text style={{color: 'white'}}>
@@ -756,7 +1159,13 @@ class TransactionsModal extends Component {
                               Savings
                             </Text>
                             <Text style={{fontSize: 14, color: 'white'}}>
-                              Transfer BNB
+                              Transfer{' '}
+                              {
+                                blockchains[
+                                  this.context.value.transactionData
+                                    .fromChainSelector
+                                ].token
+                              }
                             </Text>
                           </View>
                         </View>
@@ -768,15 +1177,30 @@ class TransactionsModal extends Component {
                             justifyContent: 'center',
                           }}>
                           <View style={{marginHorizontal: 10}}>
-                            {blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].icon}
+                            {
+                              blockchains[
+                                this.context.value.transactionData
+                                  .fromChainSelector
+                              ].tokens[0].icon
+                            }
                           </View>
                           <Text style={{color: 'white'}}>
                             {`${epsilonRound(
                               this.state.transaction.savedAmount /
-                                this.context.value.usdConversion[0],
+                                this.context.value.usdConversion[
+                                  getIndexByChain(
+                                    this.context.value.transactionData
+                                      .fromChainSelector,
+                                  )
+                                ],
                               6,
                             )}`}{' '}
-                            {blockchains[this.context.value.transactionData.fromChainSelector].tokens[0].symbol}
+                            {
+                              blockchains[
+                                this.context.value.transactionData
+                                  .fromChainSelector
+                              ].tokens[0].symbol
+                            }
                           </Text>
                         </View>
                       </View>

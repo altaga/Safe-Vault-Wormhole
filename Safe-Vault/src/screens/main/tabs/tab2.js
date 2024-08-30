@@ -529,20 +529,23 @@ export default class Tab2 extends Component {
                         ]}
                         onPress={async () => {
                           await this.changePeriod();
-                          this.context.setValue({
-                            isTransactionActive: true,
-                            transactionData: {
-                              walletSelector: 1,
-                              fromChainSelector: 0,
-                              command: 'transfer',
-                              label: `Transfer BNB`,
-                              to: this.context.value.publicKey,
-                              amount: this.context.value.balancesSavings[0],
-                              tokenSymbol: 'BNB',
-                              maxFlag: true,
-                              withSavings: false,
-                            },
-                          });
+                          /**
+                            this.context.setValue({
+                              isTransactionActive: true,
+                              transactionData: {
+                                walletSelector: 1,
+                                fromChainSelector: 0,
+                                toChainSelector: 0,
+                                command: 'transfer',
+                                label: `Transfer BNB`,
+                                to: this.context.value.publicKey,
+                                amount: this.context.value.balancesSavings[0],
+                                tokenSymbol: 'BNB',
+                                maxFlag: true,
+                                withSavings: false,
+                              },
+                            });
+                          */
                         }}>
                         <Text
                           style={{

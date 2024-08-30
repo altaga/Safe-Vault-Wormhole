@@ -1,4 +1,5 @@
 import { RN_CARD_TRANSACTION, RN_GET_ADDRESS } from '@env';
+import { SafeFactory } from '@safe-global/protocol-kit';
 import { ethers } from 'ethers';
 import React, { Component, Fragment } from 'react';
 import {
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import RNHTMLtoPDF from 'react-native-html-to-pdf';
+import RNPickerSelect from 'react-native-picker-select';
 import RNPrint from 'react-native-print';
 import QRCode from 'react-native-qrcode-svg';
 import Crypto from 'react-native-quick-crypto';
@@ -29,9 +31,9 @@ import GlobalStyles, {
   secondaryColor,
 } from '../../styles/styles';
 import {
-  BatchTokenBalancesAddress,
+  CloudAccountController,
   CloudPublicKeyEncryption,
-  blockchain,
+  blockchains
 } from '../../utils/constants';
 import ContextModule from '../../utils/contextModule';
 import {
@@ -42,7 +44,20 @@ import {
 } from '../../utils/utils';
 import ReadCard from './components/readCard';
 
+function setChains(array) {
+  return array.map((item, index) => {
+    return {
+      ...item,
+      value: index + 1,
+      label: item.network,
+      key: item.network,
+    };
+  });
+}
+
 const BaseStatePaymentWallet = {
+  toChainSelector: setChains(blockchains)[0], // 0
+  fromChain: 0,
   // Base
   cardAddress: '',
   stage: 0, // 0
@@ -51,8 +66,9 @@ const BaseStatePaymentWallet = {
   loading: false,
   status: 'Processing...',
   explorerURL: '',
+  url: '',
   transactionDisplay: {
-    name: 'GLMR',
+    name: '',
     amount: 0,
   },
   // QR print
@@ -63,7 +79,9 @@ class PaymentWallet extends Component {
   constructor(props) {
     super(props);
     this.state = BaseStatePaymentWallet;
-    this.provider = new ethers.providers.JsonRpcProvider(blockchain.rpc);
+    this.provider = blockchains.map(
+      x => new ethers.providers.JsonRpcProvider(x.rpc),
+    );
     this.svg = null;
   }
 
@@ -91,9 +109,10 @@ class PaymentWallet extends Component {
           <h1 style="font-size: 3rem;">Type: eth_signTransaction</h1>
           <h1 style="font-size: 3rem;">------------------ • ------------------</h1>
           <h1 style="font-size: 3rem;">Transaction</h1>
-          <h1 style="font-size: 3rem;">Amount: ${
-            epsilonRound(this.state.transactionDisplay.amount, 8)
-          } ${this.state.transactionDisplay.name}</h1>
+          <h1 style="font-size: 3rem;">Amount: ${epsilonRound(
+            this.state.transactionDisplay.amount,
+            8,
+          )} ${this.state.transactionDisplay.name}</h1>
           <h1 style="font-size: 3rem;">------------------ • ------------------</h1>
           <img style="width:70%" src='${
             'data:image/png;base64,' + this.state.saveData
@@ -109,6 +128,7 @@ class PaymentWallet extends Component {
   static contextType = ContextModule;
 
   componentDidMount() {
+    console.log(blockchains.map(x => x.wormholeChainId));
     console.log(this.context.value.publicKeyCard);
     this.props.navigation.addListener('focus', async () => {
       this.setState(BaseStatePaymentWallet);
@@ -126,9 +146,13 @@ class PaymentWallet extends Component {
   }
 
   async processPayment(hash) {
-    await this.provider.waitForTransaction(hash);
+    await this.provider[this.state.fromChain].waitForTransaction(hash);
+    const baseURL =
+      this.state.fromChain === this.state.toChainSelector.value - 1
+        ? `${blockchains[this.state.fromChain].blockExplorer}tx/`
+        : 'https://wormholescan.io/#/tx/';
     await this.setStateAsync({
-      explorerURL: `${blockchain.blockExplorer}tx/${hash}`,
+      explorerURL: `${baseURL}${hash}`,
       status: 'Confirmed',
       loading: false,
     });
@@ -136,25 +160,26 @@ class PaymentWallet extends Component {
 
   async payFromCard(token) {
     let index = findIndexByProperty(
-      blockchain.tokens,
+      blockchains[token.chainIndex].tokens,
       'address',
       token.address,
     );
     if (index === -1) {
       throw new Error('Token not found');
     }
-    let usdConversion = this.context.value.usdConversion[index];
+    let usdConversion =
+      this.context.value.usdConversion[token.chainIndex * 4 + index];
     await this.setStateAsync({loading: true});
     return new Promise(async (resolve, reject) => {
       const myHeaders = new Headers();
       myHeaders.append('Content-Type', 'application/json');
-
       const data = await this.encryptCardData(
         `${this.state.cardInfo.card}${this.state.cardInfo.exp}`,
       );
-
       const raw = JSON.stringify({
         data,
+        fromChain: token.chainIndex,
+        toChain: this.state.toChainSelector.value - 1,
         amount: epsilonRound(
           parseFloat(deleteLeadingZeros(formatInputText(this.state.amount))) /
             usdConversion,
@@ -163,8 +188,8 @@ class PaymentWallet extends Component {
         toAddress: this.context.value.publicKey,
         tokenAddress: token.address,
       });
-      console.log(raw);
       await this.setStateAsync({
+        fromChain: token.chainIndex,
         transactionDisplay: {
           amount: epsilonRound(
             parseFloat(deleteLeadingZeros(formatInputText(this.state.amount))) /
@@ -229,39 +254,68 @@ class PaymentWallet extends Component {
   }
 
   async getBatchBalances() {
-    const {cardAddress} = this.state;
-    const [, ...tokensArray] = blockchain.tokens.map(token => token.address);
-    const tokenBalances = new ethers.Contract(
-      BatchTokenBalancesAddress,
-      abiBatchTokenBalances,
-      this.provider,
-    );
-
-    const [balanceTemp, tempBalances, tempDecimals] = await Promise.all([
-      this.provider.getBalance(cardAddress),
-      tokenBalances.batchBalanceOf(cardAddress, tokensArray),
-      tokenBalances.batchDecimals(tokensArray),
-    ]);
-    const balance = parseFloat(ethers.utils.formatEther(balanceTemp));
-    const balancesTokens = tempDecimals.map((x, i) =>
-      parseFloat(
-        ethers.utils
-          .formatUnits(tempBalances[i].toString(), tempDecimals[i])
-          .toString(),
+    const safeFactory = await Promise.all(
+      blockchains.map(x =>
+        SafeFactory.init({
+          provider: x.rpc,
+        }),
       ),
     );
-    const balances = [balance, ...balancesTokens];
+    const safeAccountConfig = {
+      owners: [this.state.cardAddress, CloudAccountController],
+      threshold: 1,
+    };
+    const publicKeyCard = await Promise.all(
+      blockchains.map((_, i) =>
+        safeFactory[i].predictSafeAddress(safeAccountConfig),
+      ),
+    );
+    const tokensArrays = blockchains
+      .map(x =>
+        x.tokens.filter(
+          token =>
+            token.address !== '0x0000000000000000000000000000000000000000',
+        ),
+      )
+      .map(x => x.map(y => y.address));
+    const batchBalancesContracts = blockchains.map(
+      (x, i) =>
+        new ethers.Contract(
+          x.batchBalancesAddress,
+          abiBatchTokenBalances,
+          this.provider[i],
+        ),
+    );
+    const nativeBalances = await Promise.all(
+      this.provider.map((x, i) => x.getBalance(publicKeyCard[i])),
+    );
+    const tokenBalances = await Promise.all(
+      batchBalancesContracts.map((x, i) =>
+        x.batchBalanceOf(publicKeyCard[i], tokensArrays[i]),
+      ),
+    );
+    let balancesMerge = [];
+    nativeBalances.forEach((x, i) =>
+      balancesMerge.push([x, ...tokenBalances[i]]),
+    );
+    const balances = blockchains.map((x, i) =>
+      x.tokens.map((y, j) => {
+        return ethers.utils.formatUnits(balancesMerge[i][j], y.decimals);
+      }),
+    );
     return balances;
   }
 
   async getBalances() {
     const balances = await this.getBatchBalances();
-    const activeTokens = balances.map(
-      (tokenBalance, index) =>
-        tokenBalance >=
-        parseFloat(deleteLeadingZeros(formatInputText(this.state.amount))) /
-          this.context.value.usdConversion[index],
-    );
+    const activeTokens = balances
+      .flat()
+      .map(
+        (tokenBalance, index) =>
+          tokenBalance >=
+          parseFloat(deleteLeadingZeros(formatInputText(this.state.amount))) /
+            this.context.value.usdConversion[index],
+      );
     await this.setStateAsync({balances, activeTokens});
   }
 
@@ -329,6 +383,34 @@ class PaymentWallet extends Component {
                   justifyContent: 'space-evenly',
                   alignItems: 'center',
                 }}>
+                <View>
+                  <Text style={[GlobalStyles.formTitle, {alignSelf: 'center'}]}>
+                    Select Chain
+                  </Text>
+                  <RNPickerSelect
+                    style={{
+                      inputAndroidContainer: {
+                        textAlign: 'center',
+                      },
+                      inputAndroid: {
+                        textAlign: 'center',
+                        color: 'gray',
+                      },
+                      viewContainer: {
+                        ...GlobalStyles.input,
+                        width: Dimensions.get('screen').width * 0.9,
+                      },
+                    }}
+                    value={this.state.toChainSelector.value}
+                    items={setChains(blockchains)}
+                    onValueChange={value => {
+                      value !== this.state.toChainSelector.value &&
+                        this.setState({
+                          toChainSelector: setChains(blockchains)[value - 1],
+                        });
+                    }}
+                  />
+                </View>
                 <Text style={GlobalStyles.title}>Enter Amount (USD)</Text>
                 <Text style={{fontSize: 36, color: 'white'}}>
                   {deleteLeadingZeros(formatInputText(this.state.amount))}
@@ -386,7 +468,6 @@ class PaymentWallet extends Component {
                       await this.setStateAsync({cardInfo});
                       try {
                         const cardAddress = await this.getAddressFromCard();
-                        console.log(cardAddress);
                         await this.setStateAsync({cardAddress});
                         await this.getBalances();
                         await this.setStateAsync({stage: 2});
@@ -404,7 +485,13 @@ class PaymentWallet extends Component {
                   Select Payment Token
                 </Text>
                 <ScrollView>
-                  {blockchain.tokens
+                  {blockchains
+                    .map((blockchain, index) =>
+                      blockchain.tokens.map(token => {
+                        return {...token, chainIndex: index};
+                      }),
+                    )
+                    .flat()
                     .filter((_, index) => this.state.activeTokens[index])
                     .map((token, index, array) => (
                       <View
@@ -432,7 +519,14 @@ class PaymentWallet extends Component {
                             await this.setStateAsync({loading: false});
                           }}>
                           <Text style={GlobalStyles.buttonText}>
-                            Pay with {token.symbol}
+                            {token.symbol}
+                            {' ('}
+                            {blockchains[token.chainIndex].networkShort}
+                            {') '}
+                            {token.chainIndex ===
+                            this.state.toChainSelector.value - 1
+                              ? ''
+                              : 'Wormhole'}
                           </Text>
                         </Pressable>
                       </View>

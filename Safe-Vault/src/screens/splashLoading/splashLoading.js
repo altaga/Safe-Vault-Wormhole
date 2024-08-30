@@ -6,7 +6,11 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 import logoSplash from '../../assets/logo.png';
 import GlobalStyles from '../../styles/styles';
 import ContextModule from '../../utils/contextModule';
-import {getAsyncStorageValue, getEncryptedStorageValue} from '../../utils/utils';
+import {
+  getAsyncStorageValue,
+  getEncryptedStorageValue,
+  setAsyncStorageValue,
+} from '../../utils/utils';
 
 class SplashLoading extends Component {
   constructor(props) {
@@ -21,6 +25,9 @@ class SplashLoading extends Component {
       // DEBUG ONLY
       //await this.erase()
       console.log(this.props.route.name);
+      // Wormhole
+      const pendingRedeems = await getAsyncStorageValue('pendingRedeems');
+      // Main Wallet
       const publicKey = await getAsyncStorageValue('publicKey');
       const balances = await getAsyncStorageValue('balances');
       const activeTokens = await getAsyncStorageValue('activeTokens');
@@ -37,10 +44,16 @@ class SplashLoading extends Component {
       const percentage = await getAsyncStorageValue('percentage');
       // Cards
       const publicKeyCard = await getAsyncStorageValue('publicKeyCard');
+      const cardIndex = publicKeyCard
+        ? publicKeyCard.findIndex(x => x !== '')
+        : -1;
       const balancesCard = await getAsyncStorageValue('balancesCard');
       const activeTokensCard = await getAsyncStorageValue('activeTokensCard');
       const usdConversion = await getAsyncStorageValue('usdConversion');
       this.context.setValue({
+        // Wormhole
+        pendingRedeems: pendingRedeems ?? this.context.value.pendingRedeems,
+        // Main Wallet
         publicKey: publicKey ?? this.context.value.publicKey,
         balances: balances ?? this.context.value.balances,
         activeTokens: activeTokens ?? this.context.value.activeTokens,
@@ -57,6 +70,7 @@ class SplashLoading extends Component {
         savingsDate: savingsDate ?? this.context.value.savingsDate,
         percentage: percentage ?? this.context.value.percentage,
         // Cards
+        cardIndex: cardIndex ?? this.context.value.cardIndex,
         publicKeyCard: publicKeyCard ?? this.context.value.publicKeyCard,
         balancesCard: balancesCard ?? this.context.value.balancesCard,
         activeTokensCard:
@@ -65,7 +79,7 @@ class SplashLoading extends Component {
       });
       if (publicKey) {
         //this.props.navigation.navigate('Lock');
-        this.props.navigation.navigate('Main');
+        this.props.navigation.navigate('Main'); // Main
       } else {
         this.props.navigation.navigate('Setup');
       }

@@ -41,6 +41,7 @@ export const iconsBlockchain = {
 export const blockchains = [
   {
     network: 'Ethereum',
+    networkShort : 'Eth',
     token: 'ETH',
     chainId: 1,
     blockExplorer: 'https://etherscan.io/',
@@ -88,6 +89,7 @@ export const blockchains = [
   },
   {
     network: 'Arbitrum',
+    networkShort : 'Arb',
     token: 'ETH',
     chainId: 42161,
     blockExplorer: 'https://arbiscan.io/',
@@ -135,6 +137,7 @@ export const blockchains = [
   },
   {
     network: 'Avalanche',
+    networkShort : 'Avax',
     token: 'AVAX',
     chainId: 43114,
     blockExplorer: 'https://snowtrace.io/',
@@ -182,6 +185,7 @@ export const blockchains = [
   },
   {
     network: 'Base',
+    networkShort : 'Base',
     token: 'ETH',
     chainId: 8453,
     blockExplorer: 'https://basescan.org/',
@@ -230,6 +234,7 @@ export const blockchains = [
   },
   {
     network: 'BSC',
+    networkShort : 'BSC',
     token: 'BNB',
     chainId: 56,
     blockExplorer: 'https://bscscan.com/',
@@ -277,6 +282,7 @@ export const blockchains = [
   },
   {
     network: 'Optimism',
+    networkShort : 'Op',
     token: 'ETH',
     chainId: 10,
     blockExplorer: 'https://optimistic.etherscan.io/',
@@ -324,6 +330,7 @@ export const blockchains = [
   },
   {
     network: 'Polygon',
+    networkShort : 'Poly',
     token: 'MATIC',
     chainId: 137,
     blockExplorer: 'https://polygonscan.com/',

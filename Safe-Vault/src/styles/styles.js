@@ -51,7 +51,11 @@ const GlobalStyles = StyleSheet.create({
     alignItems: 'center',
   },
   mainComplete: {
-    height: '100%',
+    height: main+footer,
+    width: Dimensions.get('window').width,
+    marginTop: header,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   footer: {
     width: Dimensions.get('window').width,

@@ -233,3 +233,20 @@ export function balancedSaving(number, usd) {
 export function percentageSaving(number, percentage) {
   return number * (percentage / 100);
 }
+
+export function formatPublicKeyToUint8Array(publicKey) {
+  // Step 1: Clean and format the public key
+  const cleanedKey = publicKey.toLowerCase().replace(/^0x/, "");
+  const paddedKey = cleanedKey.padStart(40, "0");
+  const formattedKey = `0x${"0".repeat(24)}${paddedKey}`;
+
+  // Step 2: Convert the formatted key into a Uint8Array
+  const uint8Array = new Uint8Array(
+    formattedKey
+      .slice(2)
+      .match(/.{1,2}/g)
+      .map((byte) => parseInt(byte, 16))
+  );
+
+  return uint8Array;
+}

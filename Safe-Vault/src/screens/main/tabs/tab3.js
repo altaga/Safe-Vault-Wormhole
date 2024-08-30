@@ -1,12 +1,13 @@
-import { RN_CREATE_CARD } from '@env';
-import { SafeFactory } from '@safe-global/protocol-kit';
-import { ethers } from 'ethers';
-import React, { Component, Fragment } from 'react';
+import {RN_CREATE_CARD} from '@env';
+import {SafeFactory} from '@safe-global/protocol-kit';
+import {ethers} from 'ethers';
+import React, {Component, Fragment} from 'react';
 import {
   Dimensions,
   Keyboard,
   NativeEventEmitter,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -15,14 +16,12 @@ import {
 import CreditCard from 'react-native-credit-card';
 import RNPickerSelect from 'react-native-picker-select';
 import Crypto from 'react-native-quick-crypto';
-import { abiBatchTokenBalances } from '../../../contracts/batchTokenBalances';
-import GlobalStyles, { mainColor } from '../../../styles/styles';
+import {abiBatchTokenBalances} from '../../../contracts/batchTokenBalances';
+import GlobalStyles, {mainColor} from '../../../styles/styles';
 import {
-  BatchTokenBalancesAddress,
-  CloudAccountController,
   CloudPublicKeyEncryption,
-  blockchain,
-  refreshRate
+  blockchains,
+  refreshRate,
 } from '../../../utils/constants';
 import ContextModule from '../../../utils/contextModule';
 import {
@@ -40,7 +39,18 @@ function setTokens(array) {
       ...item,
       value: index + 1,
       label: item.name,
-      key: item.symbol,
+      key: item.name,
+    };
+  });
+}
+
+function setChains(array) {
+  return array.map((item, index) => {
+    return {
+      ...item,
+      value: index + 1,
+      label: item.network,
+      key: item.network,
     };
   });
 }
@@ -48,8 +58,13 @@ function setTokens(array) {
 const generator = require('creditcard-generator');
 
 const baseTab3State = {
+  // Creator
+  fromChainSelector: setChains(blockchains)[0], // 0
+  chainSelector: 0, // 0
   // Utils
-  tokenSelected: setTokens(blockchain.tokens)[0], // 0
+  tokenSelected: setTokens(
+    blockchains.map(blockchain => blockchain.tokens.map(token => token)).flat(),
+  )[0], // 0
   // Card
   cvc: randomNumber(111, 999),
   expiry: '1228',
@@ -76,7 +91,9 @@ export default class Tab3 extends Component {
   constructor(props) {
     super(props);
     this.state = baseTab3State;
-    this.provider = new ethers.providers.JsonRpcProvider(blockchain.rpc);
+    this.provider = blockchains.map(
+      x => new ethers.providers.JsonRpcProvider(x.rpc),
+    );
     this.safeFactory;
     this.EventEmitter = new NativeEventEmitter();
   }
@@ -105,10 +122,14 @@ export default class Tab3 extends Component {
   }
 
   async componentDidMount() {
-    this.safeFactory = await SafeFactory.init({
-      provider: blockchain.rpc,
-    });
-    if (this.context.value.publicKeyCard) {
+    this.safeFactory = await Promise.all(
+      blockchains.map(x =>
+        SafeFactory.init({
+          provider: x.rpc,
+        }),
+      ),
+    );
+    if (this.context.value.publicKeyCard.some(x => x !== '')) {
       this.EventEmitter.addListener('updateBalances', async () => {
         await this.refresh();
         await this.setStateAsync({amountAdd: ''});
@@ -143,26 +164,56 @@ export default class Tab3 extends Component {
 
   async getBatchBalances() {
     const {publicKeyCard} = this.context.value;
-    const [, ...tokensArray] = blockchain.tokens.map(token => token.address);
-    const tokenBalances = new ethers.Contract(
-      BatchTokenBalancesAddress,
-      abiBatchTokenBalances,
-      this.provider,
+    const tokensArrays = blockchains
+      .map(x =>
+        x.tokens.filter(
+          token =>
+            token.address !== '0x0000000000000000000000000000000000000000',
+        ),
+      )
+      .map(x => x.map(y => y.address));
+    const batchBalancesContracts = blockchains.map(
+      (x, i) =>
+        new ethers.Contract(
+          x.batchBalancesAddress,
+          abiBatchTokenBalances,
+          this.provider[i],
+        ),
     );
-    const [balanceTemp, tempBalances, tempDecimals] = await Promise.all([
-      this.provider.getBalance(publicKeyCard),
-      tokenBalances.batchBalanceOf(publicKeyCard, tokensArray),
-      tokenBalances.batchDecimals(tokensArray),
-    ]);
-    const balance = parseFloat(ethers.utils.formatEther(balanceTemp));
-    const balancesTokens = tempDecimals.map((x, i) =>
-      parseFloat(
-        ethers.utils
-          .formatUnits(tempBalances[i].toString(), tempDecimals[i])
-          .toString(),
-      ),
+    const nativeBalances = await Promise.all(
+      this.provider.map((x, i) => {
+        try {
+          if (publicKeyCard[i] === '') return ethers.BigNumber.from(0);
+          return x.getBalance(publicKeyCard[i]);
+        } catch (err) {
+          console.log(`Error in getBalance: ${blockchains[i].network}`);
+          console.log(err);
+          return ethers.BigNumber.from(0);
+        }
+      }),
     );
-    const balances = [balance, ...balancesTokens];
+    const tokenBalances = await Promise.all(
+      batchBalancesContracts.map((x, i) => {
+        try {
+          if (publicKeyCard[i] === '')
+            return tokensArrays[i].map(() => ethers.BigNumber.from(0));
+          return x.batchBalanceOf(publicKeyCard[i], tokensArrays[i]);
+        } catch (err) {
+          console.log(`Error in batchBalanceOf: ${blockchains[i].network}`);
+          console.log(err);
+          return ethers.BigNumber.from(0);
+        }
+      }),
+    );
+    let balancesMerge = [];
+    nativeBalances.forEach((x, i) =>
+      balancesMerge.push([x, ...tokenBalances[i]]),
+    );
+    const balances = blockchains.map((x, i) =>
+      x.tokens.map((y, j) => {
+        return ethers.utils.formatUnits(balancesMerge[i][j], y.decimals);
+      }),
+    );
     return balances;
   }
 
@@ -173,12 +224,6 @@ export default class Tab3 extends Component {
   }
 
   async createAccount() {
-    const safeAccountConfig = {
-      owners: [this.context.value.publicKey, CloudAccountController],
-      threshold: 1,
-    };
-    const pubKey = await this.safeFactory.predictSafeAddress(safeAccountConfig);
-    console.log(pubKey);
     return new Promise((resolve, reject) => {
       const myHeaders = new Headers();
       myHeaders.append('Content-Type', 'application/json');
@@ -186,7 +231,7 @@ export default class Tab3 extends Component {
         data: this.encryptCardData(
           `${this.state.cardInfo.card}${this.state.cardInfo.exp}`,
         ),
-        pubKey,
+        pubKey: this.context.value.publicKey,
       });
       const requestOptions = {
         method: 'POST',
@@ -219,17 +264,31 @@ export default class Tab3 extends Component {
   render() {
     return (
       <ScrollView
+        refreshControl={
+          <RefreshControl
+            progressBackgroundColor={mainColor}
+            refreshing={this.state.refreshing}
+            onRefresh={async () => {
+              await setAsyncStorageValue({
+                lastRefreshCard: Date.now().toString(),
+              });
+              await this.refresh();
+            }}
+          />
+        }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          justifyContent: this.context.value.publicKeyCard
+          justifyContent: this.context.value.publicKeyCard.some(x => x !== '')
             ? 'flex-start'
             : 'center',
           alignItems: 'center',
-          height: this.context.value.publicKeyCard ? 'auto' : '100%',
+          height: this.context.value.publicKeyCard.some(x => x !== '')
+            ? 'auto'
+            : '100%',
           width: Dimensions.get('window').width,
           paddingBottom: 10,
         }}>
-        {this.context.value.publicKeyCard ? (
+        {this.context.value.publicKeyCard.some(x => x !== '') ? (
           <Fragment>
             <View style={{height: 180, marginVertical: 20}}>
               <CreditCard
@@ -264,9 +323,9 @@ export default class Tab3 extends Component {
                 }}>
                 {`$ ${epsilonRound(
                   arraySum(
-                    this.context.value.balancesCard.map(
-                      (x, i) => x * this.context.value.usdConversion[i],
-                    ),
+                    this.context.value.balancesCard
+                      .flat()
+                      .map((x, i) => x * this.context.value.usdConversion[i]),
                   ),
                   2,
                 )} USD`}
@@ -298,13 +357,23 @@ export default class Tab3 extends Component {
                   },
                 }}
                 value={this.state.tokenSelected.value}
-                items={setTokens(blockchain.tokens).filter(
-                  (_, index) => this.context.value.activeTokensCard[index],
+                items={setTokens(
+                  blockchains
+                    .map(blockchain => blockchain.tokens.map(token => token))
+                    .flat(),
                 )}
                 onValueChange={token => {
-                  this.setState({
-                    tokenSelected: setTokens(blockchain.tokens)[token - 1],
-                  });
+                  token !== this.state.tokenSelected.value &&
+                    this.setState({
+                      chainSelector: Math.floor((token - 1) / 4),
+                      tokenSelected: setTokens(
+                        blockchains
+                          .map(blockchain =>
+                            blockchain.tokens.map(token => token),
+                          )
+                          .flat(),
+                      )[token - 1],
+                    });
                 }}
               />
               <Text style={GlobalStyles.formTitle}>Add Balance</Text>
@@ -322,7 +391,16 @@ export default class Tab3 extends Component {
                   onChangeText={value => this.setState({amountAdd: value})}
                 />
                 <Pressable
-                  disabled={this.state.loading}
+                  disabled={
+                    this.state.loading ||
+                    blockchains
+                      .map((blockchain, index) =>
+                        blockchain.tokens.map(
+                          () => this.context.value.publicKeyCard[index] === '',
+                        ),
+                      )
+                      .flat()[this.state.tokenSelected.value - 1]
+                  }
                   style={[
                     GlobalStyles.buttonStyle,
                     {
@@ -330,21 +408,35 @@ export default class Tab3 extends Component {
                       padding: 10,
                       marginLeft: '5%',
                     },
-                    this.state.loading ? {opacity: 0.5} : {},
+                    this.state.loading ||
+                    blockchains
+                      .map((blockchain, index) =>
+                        blockchain.tokens.map(
+                          () => this.context.value.publicKeyCard[index] === '',
+                        ),
+                      )
+                      .flat()[this.state.tokenSelected.value - 1]
+                      ? {opacity: 0.5}
+                      : {},
                   ]}
                   onPress={async () => {
                     this.context.setValue({
                       isTransactionActive: true,
                       transactionData: {
+                        vaa: '',
                         walletSelector: 0,
-                        fromChainSelector: 0,
+                        fromChainSelector: this.state.chainSelector,
+                        toChainSelector: this.state.chainSelector,
                         command:
                           this.state.tokenSelected.address ===
-                          blockchain.tokens[0].address
+                          blockchains[this.state.chainSelector].tokens[0]
+                            .address
                             ? 'transfer'
                             : 'transferToken',
                         label: `Transfer ${this.state.tokenSelected.symbol}`,
-                        to: this.context.value.publicKeyCard,
+                        to: this.context.value.publicKeyCard[
+                          this.state.chainSelector
+                        ],
                         amount: this.state.amountAdd,
                         tokenSymbol: this.state.tokenSelected.symbol,
                         maxFlag: false,
@@ -358,72 +450,104 @@ export default class Tab3 extends Component {
                 </Pressable>
               </View>
             </View>
-            {blockchain.tokens.map((token, index) => (
-              <View key={index} style={GlobalStyles.network}>
+            {blockchains.map((blockchain, indexChain) =>
+              blockchain.tokens.map((token, indexToken, tokens) => (
                 <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-around',
-                  }}>
-                  <View style={{marginHorizontal: 20}}>
-                    <View>{token.icon}</View>
-                  </View>
-                  <View style={{justifyContent: 'center'}}>
-                    <Text style={{fontSize: 18, color: 'white'}}>
-                      {token.name}
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'flex-start',
-                      }}>
-                      <Text style={{fontSize: 12, color: 'white'}}>
-                        {this.context.value.balancesCard[index] === 0
-                          ? '0'
-                          : this.context.value.balancesCard[index] < 0.0001
-                          ? '<0.0001'
-                          : epsilonRound(
-                              this.context.value.balancesCard[index],
-                              4,
-                            )}{' '}
-                        {token.symbol}
+                  key={`${indexChain}${indexToken}`}
+                  style={GlobalStyles.network}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-around',
+                    }}>
+                    <View style={{marginHorizontal: 20}}>
+                      <View>{token.icon}</View>
+                    </View>
+                    <View style={{justifyContent: 'center'}}>
+                      <Text style={{fontSize: 18, color: 'white'}}>
+                        {token.name}
                       </Text>
-                      <Text style={{fontSize: 12, color: 'white'}}>
-                        {`  -  ($${epsilonRound(
-                          this.context.value.usdConversion[index],
-                          4,
-                        )} USD)`}
-                      </Text>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'flex-start',
+                        }}>
+                        <Text style={{fontSize: 12, color: 'white'}}>
+                          {this.context.value.balancesCard[indexChain][
+                            indexToken
+                          ] === 0
+                            ? '0'
+                            : this.context.value.balancesCard[indexChain][
+                                indexToken
+                              ] < 0.01
+                            ? '<0.01'
+                            : epsilonRound(
+                                this.context.value.balancesCard[indexChain][
+                                  indexToken
+                                ],
+                                2,
+                              )}{' '}
+                          {token.symbol}
+                        </Text>
+                        <Text style={{fontSize: 12, color: 'white'}}>
+                          {`  -  ($${epsilonRound(
+                            this.context.value.usdConversion[
+                              indexChain * tokens.length + indexToken
+                            ],
+                            2,
+                          )} USD)`}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-                <View style={{marginHorizontal: 20}}>
-                  {this.context.value.activeTokensCard[index] ? (
-                    <Text style={{color: 'white'}}>
-                      $
-                      {epsilonRound(
-                        this.context.value.balancesCard[index] *
-                          this.context.value.usdConversion[index],
-                        2,
-                      )}{' '}
-                      USD
-                    </Text>
-                  ) : (
-                    <Pressable onPress={() => console.log('associate token')}>
-                      <Text
-                        style={{
-                          color: 'white',
-                          textAlign: 'center',
-                        }}>
-                        Associate{'\n'}Token
+                  <View style={{marginHorizontal: 20}}>
+                    {this.context.value.publicKeyCard[indexChain] !== '' ? (
+                      <Text style={{color: 'white'}}>
+                        $
+                        {epsilonRound(
+                          this.context.value.balancesCard[indexChain][
+                            indexToken
+                          ] *
+                            this.context.value.usdConversion[
+                              indexChain * tokens.length + indexToken
+                            ],
+                          2,
+                        )}{' '}
+                        USD
                       </Text>
-                    </Pressable>
-                  )}
+                    ) : (
+                      <Pressable
+                        onPress={async () => {
+                          const to = await this.safeFactory[
+                            indexChain
+                          ].getAddress();
+                          this.context.setValue({
+                            isTransactionActive: true,
+                            transactionData: {
+                              vaa: '',
+                              walletSelector: 0,
+                              fromChainSelector: indexChain,
+                              toChainSelector: 0,
+                              command: 'createAccount',
+                              label: `Create Card\n${blockchains[indexChain].network} Network`,
+                              to,
+                              amount: '0.0',
+                              tokenSymbol:
+                                blockchains[indexChain].tokens[0].symbol,
+                              maxFlag: false,
+                              withSavings: false,
+                            },
+                          });
+                        }}>
+                        <Text style={{color: 'white'}}>Deploy Card</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
-              </View>
-            ))}
+              )),
+            )}
           </Fragment>
         ) : (
           <Fragment>
@@ -431,6 +555,33 @@ export default class Tab3 extends Component {
               // Stage 0
               this.state.stage === 0 && (
                 <Fragment>
+                  <Text style={GlobalStyles.formTitle}>Origin Chain</Text>
+                  <RNPickerSelect
+                    style={{
+                      inputAndroidContainer: {
+                        textAlign: 'center',
+                      },
+                      inputAndroid: {
+                        textAlign: 'center',
+                        color: 'gray',
+                      },
+                      viewContainer: {
+                        ...GlobalStyles.input,
+                        width: Dimensions.get('screen').width * 0.9,
+                      },
+                    }}
+                    value={this.state.fromChainSelector.value}
+                    items={setChains(blockchains)}
+                    onValueChange={value => {
+                      value !== this.state.fromChainSelector.value &&
+                        this.setState({
+                          fromChainSelector: setChains(blockchains)[value - 1],
+                          tokenSelected: setTokens(
+                            blockchains[value - 1].tokens,
+                          )[this.state.tokenSelected.value - 1],
+                        });
+                    }}
+                  />
                   <Text
                     style={[
                       GlobalStyles.exoTitle,
@@ -482,20 +633,31 @@ export default class Tab3 extends Component {
                     <ReadCard
                       cardInfo={async cardInfo => {
                         if (cardInfo) {
-                          console.log(cardInfo);
                           await this.setStateAsync({cardInfo});
                           await this.createAccount();
-                          const to = await this.safeFactory.getAddress();
+                          const to = await this.safeFactory[
+                            this.state.fromChainSelector.value - 1
+                          ].getAddress();
                           this.context.setValue({
                             isTransactionActive: true,
                             transactionData: {
+                              vaa: '',
                               walletSelector: 0,
-                              fromChainSelector: 0,
+                              fromChainSelector:
+                                this.state.fromChainSelector.value - 1,
+                              toChainSelector: 0,
                               command: 'createAccount',
-                              label: `Create Card`,
+                              label: `Create Card\n${
+                                blockchains[
+                                  this.state.fromChainSelector.value - 1
+                                ].network
+                              } Network`,
                               to,
                               amount: '0.0',
-                              tokenSymbol: blockchain.token,
+                              tokenSymbol:
+                                blockchains[
+                                  this.state.fromChainSelector.value - 1
+                                ].token,
                               maxFlag: false,
                               withSavings: false,
                             },
