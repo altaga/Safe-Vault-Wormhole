@@ -18,17 +18,17 @@ Our project has 3 fundamental components and their diagrams are as follows.
 
 ## Wormhole Token Bridge:
 
-Este es uno de los componentes fundamentales de nuestro proyecto, ya que buscamos que el realizar un pago o transferencia no tenga ningun impedimento por la chain de origen, gracias a Wormhole podemos realizar crosschain payments, ya sea directamente en la app o con la tarjeta fisica en la terminal.
+This is one of the fundamental components of our project, since we seek to ensure that making a payment or transfer does not have any impediments due to the chain of origin. Thanks to Wormhole we can make crosschain payments, either directly in the app or with the physical card in the terminal.
 
 <img src="https://i.ibb.co/Z8fcWkS/wormhole-4-drawio.png">
 
 #### Compatible Chains:
 
-Todas las chains que son compatibles con Safe Vault son las siguientes, y puedes realizar transferecias directas o crosschain desde cualquiera de ellas como origen y destino.
+All chains that are supported by Safe Vault are the following, and you can make direct or cross-chain transfers from any of them as source and destination.
 
 <img src="https://i.ibb.co/9WfZ9fW/Chains.png">
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [TRANSACTION WITH CARD](./Cloud%20Functions/cardTransaction/index.js)
 - [TRANSACTIONS COMPONENT](./SafeVault/src/utils/transactionsModal.js)
@@ -39,9 +39,9 @@ Being able to use the card to pay with crypto is only possible thanks to [Safe](
 
 <img src="https://i.ibb.co/dGS3t50/Safe-Diagram-drawio.png">
 
-Como SAFE es una Account Abstraction deberas desplegarla en cada una de las chains que quieras habilitar para realizar tus pagos, sin embargo al ser compatibles con Wormhole Token Bridge, podras realizar tu pago desde cualquiera de las chains de la app.
+Since SAFE is an Account Abstraction utility, you must deploy it in each of the chains that you want to enable to make your payments. However, since they are compatible with Wormhole Token Bridge, you can make your payment from any of the chains in the app.
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [CREATE CARD](./Cloud%20Functions/createCard/index.js)
 - [CARDS TAB](./Safe-Vault/src/screens/main/tabs/tab3.js)
@@ -49,11 +49,11 @@ Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
 
 ## Batch Balances Contract:
 
-Este contrato tiene como finalidad mejorar la UI/UX de nuestra aplicacion, ya que mediante una sola llamada de RPC podemos obtener en batch todos los balances de cualquier serie de ERC20 tokens. Este codigo funciona perfectamente con las EOA Wallets y las SAFE Wallets.
+This contract is intended to improve the UI/UX of our application, since with a single RPC call we can obtain in batch all the balances of any series of ERC20 tokens. This code works perfectly with EOA Wallets and SAFE Wallets.
 
 <img src="https://i.ibb.co/Y3H4tqz/vlcsnap-2024-08-30-19h41m11s201.png" width="32%"> 
 
-Este contrato esta deplegado en cada una de las redes de nuestra aplicacion:
+This contract is deployed in each of our application networks:
 
 - Ethererum: [0x0d29EBC0d84AF212762081e6c3f5993180f7C7cF](https://etherscan.io/address/0x0d29EBC0d84AF212762081e6c3f5993180f7C7cF#code)
 - Arbitrum: [0xd9842bc03662E5d8cAafF9aA91fAF4e43cab816C](https://arbiscan.io/address/0xd9842bc03662E5d8cAafF9aA91fAF4e43cab816C#code)
@@ -63,7 +63,7 @@ Este contrato esta deplegado en cada una de las redes de nuestra aplicacion:
 - Optimism: [0xc83bc103229484f40588b5CDE47CbA2A4c312033](https://optimistic.etherscan.io/address/0xc83bc103229484f40588b5CDE47CbA2A4c312033#code)
 - Polygon: [0xc83bc103229484f40588b5CDE47CbA2A4c312033](https://polygonscan.com/address/0xc83bc103229484f40588b5CDE47CbA2A4c312033#code)
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [CONTRACT BATCH BALANCES](./Contracts/batchBalances.sol)
 - [WALLET CODE](./Safe-Vault/src/screens/main/tabs/tab1.js)
@@ -104,7 +104,7 @@ In turn, this tab integrates the contract of [Batch Balances](./Safe-Vault/src/c
         return balances;
     }
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [SCREEN CODE](./SafeVault/src/screens/main/tabs/tab1.js)
 
@@ -114,7 +114,7 @@ With the send function, we can send native tokens or ERC20 tokens. Like any wall
 
 <img src="https://i.ibb.co/6Zc7Pf3/Screenshot-20240830-194453.png" width="32%"> <img src="https://i.ibb.co/GnT8v9c/Screenshot-20240830-194437.png" width="32%"> <img src="https://i.ibb.co/ZKpLsDh/Screenshot-20240830-194502.png" width="32%">
 
-NOTA: es importante aclarar que las tranferencias crosschain se hacen a travez de [Wormhole Bridge](https://wormhole.com/), asi que pueden tener un pequeño costo adicional por las Gas Fees y aun mas si se utilizan [Automatic Relayers](https://docs.wormhole.com/wormhole/explore-wormhole/relayer) ya que las comisiones de la transaccion seran pagadas por el Sender.
+NOTE: It is important to clarify that crosschain transfers are made through [Wormhole Bridge](https://wormhole.com/), so they may have a small additional cost for Gas Fees and even more if [Automatic Relayers](https://docs.wormhole.com/wormhole/explore-wormhole/relayer) are used since the transaction fees will be paid by the Sender.
 
 All transactions are executed in the following component.
 
@@ -127,7 +127,7 @@ With this screen, you can easily show your Wallet to receive funds, whether nati
 
 <img src="https://i.ibb.co/0VF7ccT/Screenshot-20240830-194510.png" width="32%">
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [SCREEN CODE](./SafeVault/src/screens/depositWallet/depositWallet.js)
 
@@ -138,26 +138,26 @@ In this tab we intend to make it the same as using a traditional POS, this allow
 <img src="https://i.ibb.co/FmmNw5z/Screenshot-20240830-194515.png" width="32%"> <img src="https://i.ibb.co/P9kq898/Screenshot-20240830-195915.png" width="32%"> <img src="https://i.ibb.co/GVdMJs0/Screenshot-20240830-194522.png
 " width="32%">
 
-As you can see, since it is an Safe Account Card, we can review the amount of money it has in all the available tokens to be able to make the payment with any of them, whether it is a native token or ERC20. Incluso gracias a wormhole ni siquiera nos tenemos que preocupar por utilizar la mimsma chain del vendedor, todas la opciones que requieran womrhole se especificaran en la pantalla de seleccion de token.
+As you can see, since it is an Safe Account Card, we can review the amount of money it has in all the available tokens to be able to make the payment with any of them, whether it is a native token or ERC20. Through wormhole we don't even have to worry about using the same chain as the seller, all the options that require wormhole will be specified on the token selection screen.
 
 <img src="https://i.ibb.co/RYWhHy8/Screenshot-20240830-195847.png" width="32%"> <img src="https://i.ibb.co/LS1RbbW/Screenshot-20240830-195905.png" width="32%"> <img src="https://i.ibb.co/cvJvjFX/Screenshot-20240830-195908.png" width="32%">
 
 Finally, if our device has the option to print the purchase receipt, it can be printed immediately.
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [SCREEN CODE](./SafeVault/src/screens/paymentWallet/paymentWallet.js)
 - [CARD PAYMENT CODE](./Cloud%20Functions/cardTransaction/index.js)
 
 ## Redeems:
 
-Hay ocasiones en las que recibimos transacciones crosschain mediante wormhole y estas no pasan de forma automatica, para estas transacciones tendremos que realizar un Redeem manualemnte, asi que en esta tab podremos revisar todas las transacciones pendientes y redimirlas.
+There are times when we receive crosschain transactions through a wormhole and these do not go through automatically. For these transactions we will have to perform a Redeem manually, so in this tab we can review all pending transactions and redeem them.
 
 <img src="https://i.ibb.co/NYwvbNB/Screenshot-20240830-194528.png" width="32%">
 
-El proceso para hacer el Reedem se realizar obteniendo el VAA de la transaccion mediante la API de Wormhole y firmando la transaccion en la red de destino.
+The process to redeem will be done by obtaining the transaction's VAA through the Wormhole API and signing the transaction on the target network.
 
-NOTA: Esta es solo la version simplificada de la API Call que se realiza en la aplicacion, favor de revisar el codigo de esta tab para ver completamente como se realiza el redeem.
+NOTE: This is just the simplified version of the API Call that is performed in the application, please review the code in this tab to fully see how the redeem is performed.
 
     fetch(
         `https://api.wormholescan.io/api/v1/operations?page=0&pageSize=50&sortOrder=DESC&address=${this.context.value.publicKey}`,
@@ -166,7 +166,7 @@ NOTA: Esta es solo la version simplificada de la API Call que se realiza en la a
     .then(response => response.json())
     .then(result => console.log(result))
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [SCREEN CODE](./Safe-Vault/src/screens/redeem/redeem.js)
 
@@ -176,7 +176,7 @@ In the savings section, we can create our savings account, this account is linke
 
 <img src="https://i.ibb.co/S3w3b3f/vlcsnap-2024-08-15-23h05m12s788.png" width="32%"> <img src="https://i.ibb.co/dKZpYB0/vlcsnap-2024-08-15-23h05m01s157.png" width="32%"> <img src="https://i.ibb.co/55jLcds/vlcsnap-2024-08-15-23h05m04s545.png" width="32%">
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [SCREEN CODE](./SafeVault/src/screens/main/tabs/tab2.js)
 
@@ -217,7 +217,7 @@ Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
             return number * (percentage / 100);
         }
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [SAVINGS CODE](./SafeVault/src/utils/utils.js)
 
@@ -239,9 +239,9 @@ With a multi-owner smart contract account, the user maintains full ownership and
         return encrypted.toString('base64');
     }
 
-NOTA: Como SAFE es una Account Abstraction deberas desplegarla en cada una de las chains que quieras habilitar para realizar tus pagos, sin embargo al ser compatibles con Wormhole Token Bridge, podras realizar tu pago desde cualquiera de las chains de la app.
+NOTE: Since SAFE is an Account Abstraction, you will need to deploy it in each of the chains you want to enable to make your payments. However, since they are compatible with Wormhole Token Bridge, you will be able to make your payment from any of the chains in the app.
 
-Toda la implementacion tecnica de esto, esta en los siguientes enlaces:
+All the technical implementation of this is in the following links:
 
 - [CARD TRANSACTION](./Cloud%20Function/cardTransaction/index.js)
 - [SCREEN CODE](./SafeVault/src/utils/transactionsModal.js)
